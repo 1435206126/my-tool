@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频截图拼接工具 - 自由选区版</title>
+    <style>
+        :root {
+            --primary: #007bff;
+            --bg: #f4f6f8;
+            --panel-bg: #ffffff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", Arial, sans-serif; }
+        
+        body { background: var(--bg); padding: 20px; height: 100vh; display: flex; flex-direction: column; overflow: hidden;}
+        
+        .header { text-align: center; margin-bottom: 15px; flex-shrink: 0; }
+        .header h1 { font-size: 22px; color: #333; margin-bottom: 5px; }
+        .hint { color: #666; font-size: 13px; }
+        
+        .main-layout { display: flex; gap: 20px; flex: 1; overflow: hidden; max-width: 1400px; margin: 0 auto; width: 100%; }
+        
+        /* 左侧视频区 */
+        .video-panel {
+            flex: 2; display: flex; flex-direction: column; gap: 10px;
+            background: var(--panel-bg); padding: 15px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); min-width: 0;
+        }
+        
+        .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .file-btn { position: relative; overflow: hidden; }
+        .file-btn input[type=file] { position: absolute; left: 0; top: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+        
+        .btn {
+            padding: 6px 12px; border: 1px solid #ccc; background: #fff;
+            border-radius: 4px; cursor: pointer; font-size: 13px; transition: 0.2s;
+            display: flex; align-items: center; gap: 5px;
+        }
+        .btn:hover { background: #f0f0f0; }
+        .btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+        .btn-success { background: #28a745; color: white; border: none; }
+        .btn-orange { background: #fd7e14; color: white; border: none; }
+        .btn-danger { background: #dc3545; color: white; border: none; }
+
+        .fps-wrapper { display: flex; align-items: center; gap: 5px; font-size: 13px; background: #eee; padding: 5px 10px; border-radius: 4px; }
+        .fps-wrapper input { width: 40px; text-align: center; border: 1px solid #ccc; border-radius: 3px; }
+
+        /* 视频容器 */
+        .video-wrapper {
+            flex: 1; background: #000; position: relative;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden; border-radius: 4px;
+            user-select: none;
+        }
+        video { max-width: 100%; max-height: 100%; display: block; pointer-events: none; }
+        
+        /* 选区覆盖层 */
+        .overlay-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        
+        /* 选区框 - 恢复拖拽样式 */
+        .selection-box {
+            position: absolute;
+            border: 2px solid #ff3b30;
+            background: rgba(255, 59, 48, 0.1);
+            pointer-events: auto;
+            cursor: move;
+            box-shadow: 0 0 0 2000px rgba(0,0,0,0.5); /* 遮罩效果 */
+            z-index: 10;
+        }
+
+        /* 恢复手柄 */
+        .handle { position: absolute; width: 10px; height: 10px; background: white; border: 1px solid #ff3b30; z-index: 11; }
+        .h-nw { top: -6px; left: -6px; cursor: nw-resize; }
+        .h-n  { top: -6px; left: 50%; margin-left: -5px; cursor: n-resize; }
+        .h-ne { top: -6px; right: -6px; cursor: ne-resize; }
+        .h-w  { top: 50%; left: -6px; margin-top: -5px; cursor: w-resize; }
+        .h-e  { top: 50%; right: -6px; margin-top: -5px; cursor: e-resize; }
+        .h-sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+        .h-s  { bottom: -6px; left: 50%; margin-left: -5px; cursor: s-resize; }
+        .h-se { bottom: -6px; right: -6px; cursor: se-resize; }
+
+        /* 进度条 */
+        .progress-area { display: flex; align-items: center; gap: 10px; font-size: 12px; font-family: monospace; position: relative; }
+        .progress-bar { flex: 1; height: 8px; background: #ddd; border-radius: 4px; cursor: pointer; position: relative; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; border-radius: 4px; }
+        .wheel-hint { position: absolute; right: -25px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #666; background: #f0f0f0; padding: 2px 5px; border-radius: 3px; border: 1px solid #ddd; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .progress-area:hover .wheel-hint { opacity: 1; }
+
+        /* 帧控制区 */
+        .frame-controls { display: flex; justify-content: center; gap: 15px; padding: 8px; background: #f8f9fa; border-radius: 6px; border: 1px solid #eee; flex-wrap: wrap; }
+        .frame-group { display: flex; align-items: center; gap: 2px; }
+        .frame-group span { font-size: 12px; color: #666; margin-right: 4px; }
+        .mini-btn { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer;}
+        .custom-step-input { width: 40px; text-align: center; border: 1px solid var(--primary); border-radius: 3px; color: var(--primary); font-weight: bold; height: 28px; margin: 0 2px; }
+
+        /* 右侧侧边栏 */
+        .sidebar { flex: 1; background: var(--panel-bg); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); min-width: 300px; max-width: 350px; }
+        .panel-section { border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .panel-title { font-weight: bold; font-size: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; }
+        
+        .shot-list { flex: 1; overflow-y: auto; background: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; align-content: start; }
+        .shot-item { position: relative; border: 2px solid transparent; cursor: pointer; transition: 0.2s; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .shot-item:hover { transform: translateY(-2px); box-shadow: 0 5px 10px rgba(0,0,0,0.1); border-color: var(--primary); }
+        .shot-item.dragging { opacity: 0.4; }
+        .shot-item img { width: 100%; height: auto; display: block; pointer-events: none;}
+        .shot-del { position: absolute; top: -5px; right: -5px; width: 18px; height: 18px; background: red; color: white; border-radius: 50%; text-align: center; line-height: 16px; font-size: 12px; cursor: pointer; display: none; z-index: 5; }
+        .shot-item:hover .shot-del { display: block; }
+
+        /* 图片预览 */
+        .image-viewer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; display: none; align-items: center; justify-content: center; cursor: zoom-out; }
+        .image-viewer img { max-width: 95%; max-height: 95%; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+
+        .toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); color: white; padding: 10px 20px; border-radius: 20px; font-size: 14px; pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 999; }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>视频截图拼接工具</h1>
+    <div class="hint">鼠标右键/空格: 截图 | 回车: 合成长图 | Ctrl+回车: 分别保存单图 | 选框可自由拖拽拉伸</div>
+</div>
+
+<div class="main-layout">
+    <div class="video-panel">
+        <div class="toolbar">
+            <button class="btn file-btn">📂 打开视频<input type="file" id="videoInput" accept="video/*"></button>
+            <div class="fps-wrapper"><label>帧率:</label><input type="number" id="fpsInput" value="30" min="1"></div>
+            <button class="btn btn-danger" id="clearAllBtn">清空列表</button>
+            <span id="statusText" style="font-size:12px; color:#666; margin-left:auto;">等待载入...</span>
+        </div>
+
+        <div class="video-wrapper" id="videoContainer">
+            <video id="videoPlayer"></video>
+            <div class="overlay-layer">
+                <div class="selection-box" id="selectionBox" style="display:none;">
+                    <div class="handle h-nw" data-dir="nw"></div>
+                    <div class="handle h-n"  data-dir="n"></div>
+                    <div class="handle h-ne" data-dir="ne"></div>
+                    <div class="handle h-w"  data-dir="w"></div>
+                    <div class="handle h-e"  data-dir="e"></div>
+                    <div class="handle h-sw" data-dir="sw"></div>
+                    <div class="handle h-s"  data-dir="s"></div>
+                    <div class="handle h-se" data-dir="se"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="progress-area">
+            <span id="currTime">00:00</span>
+            <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+            <span id="totalTime">00:00</span>
+            <div class="wheel-hint">滚轮控制进度</div>
+        </div>
+
+        <div class="frame-controls">
+            <div class="frame-group" style="border-right: 1px solid #ddd; padding-right: 10px;">
+                <span style="color:var(--primary); font-weight:bold;">自定义:</span>
+                <button class="btn mini-btn" onclick="seekCustom(-1)">←</button>
+                <input type="number" id="customStepInput" class="custom-step-input" value="15" min="1">
+                <button class="btn mini-btn" onclick="seekCustom(1)">→</button>
+            </div>
+            <div class="frame-group"><span>1帧:</span><button class="btn mini-btn" onclick="seekFrame(-1)">←</button><button class="btn mini-btn" onclick="seekFrame(1)">→</button></div>
+            <div class="frame-group"><span>5帧:</span><button class="btn mini-btn" onclick="seekFrame(-5)">←</button><button class="btn mini-btn" onclick="seekFrame(5)">→</button></div>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <div class="panel-section">
+            <button class="btn btn-success" id="captureBtn" style="width:100%; height:45px; font-size:15px; margin-bottom:10px;">📸 截图 (右键/空格)</button>
+            <button class="btn btn-primary" id="downloadBtn" style="width:100%; height:40px; font-size:14px; margin-bottom:10px;">💾 合并成长图 (回车)</button>
+            <button class="btn btn-orange" id="saveMultiBtn" style="width:100%; height:40px; font-size:14px;">📦 批量保存单图 (Ctrl+回车)</button>
+            <button class="btn" onclick="resetToFull()" style="width:100%; margin-top:10px; font-size:12px;">自动铺满全屏</button>
+        </div>
+
+        <div class="panel-title">截图队列 <span id="shotCount" style="color:var(--primary)">(0)</span></div>
+        <div class="shot-list" id="shotList">
+            <div style="text-align:center; color:#999; padding:20px; grid-column:1/-1;">暂无截图</div>
+        </div>
+    </div>
+</div>
+
+<div class="image-viewer" id="imageViewer"><img src="" id="viewerImg"></div>
+<div class="toast" id="toast">提示信息</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const state = {
+        fps: 30,
+        videoUrl: null,
+        rect: { x: 0, y: 0, w: 0, h: 0 }, // 存储相对于视频显示区域的坐标
+        screenshots: [],
+        videoMetrics: { displayW: 0, displayH: 0, offsetX: 0, offsetY: 0 },
+        isDragging: false,
+        dragAction: null,
+        dragStart: { x: 0, y: 0 },
+        rectStart: { x: 0, y: 0, w: 0, h: 0 }
+    };
+
+    const els = {
+        video: document.getElementById('videoPlayer'),
+        videoContainer: document.getElementById('videoContainer'),
+        fileInput: document.getElementById('videoInput'),
+        selBox: document.getElementById('selectionBox'),
+        shotList: document.getElementById('shotList'),
+        fpsInput: document.getElementById('fpsInput'),
+        customStepInput: document.getElementById('customStepInput'),
+        progressBar: document.getElementById('progressBar'),
+        progressFill: document.getElementById('progressFill'),
+        imageViewer: document.getElementById('imageViewer'),
+        viewerImg: document.getElementById('viewerImg')
+    };
+
+    // --- 1. 视频加载 ---
+    els.fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (state.videoUrl) URL.revokeObjectURL(state.videoUrl);
+        state.videoUrl = URL.createObjectURL(file);
+        els.video.src = state.videoUrl;
+        els.video.onloadedmetadata = () => {
+            updateVideoMetrics();
+            resetToFull(); // 默认铺满
+            showToast("视频已加载");
+            document.getElementById('statusText').innerText = file.name;
+        };
+    });
+
+    function updateVideoMetrics() {
+        if (!els.video.videoWidth) return;
+        const containerW = els.videoContainer.clientWidth;
+        const containerH = els.videoContainer.clientHeight;
+        const videoRatio = els.video.videoWidth / els.video.videoHeight;
+        
+        if (videoRatio > containerW / containerH) {
+            state.videoMetrics.displayW = containerW;
+            state.videoMetrics.displayH = containerW / videoRatio;
+            state.videoMetrics.offsetX = 0;
+            state.videoMetrics.offsetY = (containerH - state.videoMetrics.displayH) / 2;
+        } else {
+            state.videoMetrics.displayH = containerH;
+            state.videoMetrics.displayW = containerH * videoRatio;
+            state.videoMetrics.offsetY = 0;
+            state.videoMetrics.offsetX = (containerW - state.videoMetrics.displayW) / 2;
+        }
+    }
+
+    // 默认铺满逻辑
+    window.resetToFull = () => {
+        state.rect = { x: 0, y: 0, w: state.videoMetrics.displayW, h: state.videoMetrics.displayH };
+        renderSelection();
+    };
+
+    function renderSelection() {
+        els.selBox.style.display = 'block';
+        els.selBox.style.left = `${state.videoMetrics.offsetX + state.rect.x}px`;
+        els.selBox.style.top = `${state.videoMetrics.offsetY + state.rect.y}px`;
+        els.selBox.style.width = `${state.rect.w}px`;
+        els.selBox.style.height = `${state.rect.h}px`;
+    }
+
+    // --- 2. 选区拖拽拉伸逻辑 (关键找回) ---
+    els.selBox.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        state.isDragging = true;
+        state.dragStart = { x: e.clientX, y: e.clientY };
+        state.rectStart = { ...state.rect };
+        state.dragAction = e.target.classList.contains('handle') ? e.target.dataset.dir : 'move';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!state.isDragging) return;
+        const dx = e.clientX - state.dragStart.x;
+        const dy = e.clientY - state.dragStart.y;
+        const s = state.rectStart;
+        const limitW = state.videoMetrics.displayW;
+        const limitH = state.videoMetrics.displayH;
+
+        let n = { ...state.rect };
+        if (state.dragAction === 'move') {
+            n.x = Math.max(0, Math.min(s.x + dx, limitW - s.w));
+            n.y = Math.max(0, Math.min(s.y + dy, limitH - s.h));
+        } else {
+            const dir = state.dragAction;
+            if (dir.includes('e')) n.w = Math.min(Math.max(20, s.w + dx), limitW - s.x);
+            if (dir.includes('s')) n.h = Math.min(Math.max(20, s.h + dy), limitH - s.y);
+            if (dir.includes('w')) {
+                const actualDx = Math.min(dx, s.w - 20);
+                n.x = Math.max(0, s.x + actualDx);
+                n.w = s.w - (n.x - s.x);
+            }
+            if (dir.includes('n')) {
+                const actualDy = Math.min(dy, s.h - 20);
+                n.y = Math.max(0, s.y + actualDy);
+                n.h = s.h - (n.y - s.y);
+            }
+        }
+        state.rect = n;
+        renderSelection();
+    });
+
+    window.addEventListener('mouseup', () => state.isDragging = false);
+
+    // --- 3. 截图功能 ---
+    window.addEventListener('contextmenu', (e) => { e.preventDefault(); capture(); });
+    document.getElementById('captureBtn').onclick = capture;
+
+    function capture() {
+        if (!els.video.src) return showToast("请先加载视频");
+        const canvas = document.createElement('canvas');
+        const scaleX = els.video.videoWidth / state.videoMetrics.displayW;
+        const scaleY = els.video.videoHeight / state.videoMetrics.displayH;
+
+        canvas.width = state.rect.w * scaleX;
+        canvas.height = state.rect.h * scaleY;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(els.video, state.rect.x * scaleX, state.rect.y * scaleY, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+        
+        state.screenshots.push({ id: Date.now(), dataUrl: canvas.toDataURL('image/jpeg', 0.95) });
+        renderShotList();
+        showToast("已截图");
+    }
+
+    function renderShotList() {
+        document.getElementById('shotCount').innerText = `(${state.screenshots.length})`;
+        els.shotList.innerHTML = '';
+        state.screenshots.forEach((item, index) => {
+            const div = document.createElement('div');
+            div.className = 'shot-item';
+            div.draggable = true;
+            div.innerHTML = `<img src="${item.dataUrl}"><div class="shot-del">×</div>`;
+            div.onclick = () => { els.viewerImg.src = item.dataUrl; els.imageViewer.style.display = 'flex'; };
+            div.querySelector('.shot-del').onclick = (e) => { e.stopPropagation(); state.screenshots.splice(index, 1); renderShotList(); };
+            
+            div.ondragstart = (e) => { e.dataTransfer.setData('idx', index); div.classList.add('dragging'); };
+            div.ondragend = () => div.classList.remove('dragging');
+            div.ondragover = (e) => e.preventDefault();
+            div.ondrop = (e) => {
+                e.preventDefault();
+                const from = e.dataTransfer.getData('idx');
+                const moved = state.screenshots.splice(from, 1)[0];
+                state.screenshots.splice(index, 0, moved);
+                renderShotList();
+            };
+            els.shotList.appendChild(div);
+        });
+        if(state.screenshots.length === 0) els.shotList.innerHTML = '<div style="text-align:center; color:#999; padding:20px; grid-column:1/-1;">暂无截图</div>';
+    }
+
+    els.imageViewer.onclick = () => els.imageViewer.style.display = 'none';
+
+    // --- 4. 保存功能 ---
+    document.getElementById('downloadBtn').onclick = () => {
+        if (state.screenshots.length === 0) return;
+        const images = state.screenshots.map(s => {
+            const img = new Image();
+            img.src = s.dataUrl;
+            return img;
+        });
+        Promise.all(images.map(img => new Promise(res => img.onload = res))).then(() => {
+            const w = Math.max(...images.map(i => i.width));
+            const h = images.reduce((sum, i) => sum + i.height, 0);
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            let y = 0;
+            images.forEach(img => { ctx.drawImage(img, 0, y); y += img.height; });
+            const link = document.createElement('a');
+            link.download = `拼接_${Date.now()}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+        });
+    };
+
+    document.getElementById('saveMultiBtn').onclick = downloadIndividual;
+    function downloadIndividual() {
+        state.screenshots.forEach((s, i) => {
+            setTimeout(() => {
+                const link = document.createElement('a');
+                link.download = `截图_${i+1}.jpg`;
+                link.href = s.dataUrl;
+                link.click();
+            }, i * 300);
+        });
+    }
+
+    // --- 5. 快捷键与控制 ---
+    document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        if (e.code === 'Space') { e.preventDefault(); capture(); }
+        if (e.code === 'Enter') {
+            e.preventDefault();
+            if (e.ctrlKey) downloadIndividual(); else document.getElementById('downloadBtn').click();
+        }
+        if (e.code === 'ArrowLeft') seekCustom(-1);
+        if (e.code === 'ArrowRight') seekCustom(1);
+        if (e.code === 'Escape') els.imageViewer.style.display = 'none';
+    });
+
+    window.seekFrame = (f) => { els.video.currentTime += f * (1 / state.fps); };
+    window.seekCustom = (d) => { 
+        const step = parseInt(els.customStepInput.value) || 15;
+        seekFrame(step * d); 
+        showToast(`${d>0?'前进':'后退'} ${step} 帧`);
+    };
+
+    const handleWheel = (e) => {
+        if (!els.video.duration) return;
+        e.preventDefault();
+        els.video.currentTime += (e.deltaY > 0 ? 0.5 : -0.5);
+    };
+    document.querySelector('.progress-area').addEventListener('wheel', handleWheel, {passive:false});
+    els.videoContainer.addEventListener('wheel', handleWheel, {passive:false});
+
+    els.video.ontimeupdate = () => {
+        const cur = els.video.currentTime || 0;
+        const dur = els.video.duration || 1;
+        document.getElementById('currTime').innerText = formatTime(cur);
+        document.getElementById('totalTime').innerText = formatTime(dur);
+        els.progressFill.style.width = `${(cur/dur)*100}%`;
+    };
+
+    function formatTime(s) { return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`; }
+    function showToast(m) { els.toast.innerText = m; els.toast.classList.add('show'); setTimeout(()=>els.toast.classList.remove('show'), 1500); }
+    document.getElementById('clearAllBtn').onclick = () => { if(confirm("清空？")) { state.screenshots=[]; renderShotList(); }};
+    els.fpsInput.onchange = (e) => state.fps = parseInt(e.target.value) || 30;
+    window.addEventListener('resize', () => { updateVideoMetrics(); renderSelection(); });
+});
+</script>
+</body>
+</html>

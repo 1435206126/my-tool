@@ -1,0 +1,777 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>长图分割工具 - 可配置分割数量</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+            padding: 30px;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eaeaea;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+        
+        .config-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            margin-bottom: 30px;
+            padding: 25px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .upload-area {
+            flex: 1;
+            min-width: 300px;
+            border: 2px dashed #ced4da;
+            border-radius: 10px;
+            padding: 30px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            border-color: #4a90e2;
+            background-color: #f0f7ff;
+        }
+        
+        .config-area {
+            flex: 1;
+            min-width: 300px;
+            padding: 20px;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            color: #4a90e2;
+            margin-bottom: 15px;
+        }
+        
+        .upload-text {
+            margin-bottom: 20px;
+        }
+        
+        .upload-text h3 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        
+        .upload-text p {
+            color: #6c757d;
+            font-size: 14px;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .upload-btn {
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-btn:hover {
+            background-color: #357ae8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.25);
+        }
+        
+        .config-item {
+            margin-bottom: 25px;
+        }
+        
+        .config-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .config-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .config-input:focus {
+            border-color: #4a90e2;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+        }
+        
+        .range-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #e0e0e0;
+            border-radius: 3px;
+            outline: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #4a90e2;
+            cursor: pointer;
+        }
+        
+        .range-value {
+            font-weight: bold;
+            color: #4a90e2;
+            min-width: 30px;
+            text-align: center;
+        }
+        
+        .image-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .info-item {
+            background-color: #fff;
+            padding: 10px 18px;
+            border-radius: 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            flex: 1;
+            min-width: 180px;
+            text-align: center;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #4a90e2;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .actions {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        
+        .action-btn {
+            padding: 14px 32px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            font-size: 16px;
+            min-width: 150px;
+        }
+        
+        #splitBtn {
+            background-color: #34c759;
+            color: white;
+        }
+        
+        #splitBtn:hover {
+            background-color: #2db34a;
+        }
+        
+        #downloadAllBtn {
+            background-color: #ff9500;
+            color: white;
+        }
+        
+        #downloadAllBtn:hover {
+            background-color: #e68500;
+        }
+        
+        #resetBtn {
+            background-color: #8e8e93;
+            color: white;
+        }
+        
+        #resetBtn:hover {
+            background-color: #7a7a7f;
+        }
+        
+        .results-section {
+            margin-top: 40px;
+        }
+        
+        .section-title {
+            font-size: 22px;
+            color: #2c3e50;
+            margin-bottom: 25px;
+            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .result-counter {
+            font-size: 16px;
+            color: #7f8c8d;
+            background-color: #f8f9fa;
+            padding: 8px 15px;
+            border-radius: 20px;
+        }
+        
+        .result-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+        
+        .result-item {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .result-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eaeaea;
+        }
+        
+        .result-title {
+            font-weight: 600;
+            color: #4a90e2;
+        }
+        
+        .result-size {
+            font-size: 13px;
+            color: #7f8c8d;
+            background-color: #fff;
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+        
+        .result-image {
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            display: block;
+            margin: 0 auto 15px;
+            max-height: 300px;
+            object-fit: contain;
+        }
+        
+        .download-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            text-align: center;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .download-btn:hover {
+            background-color: #357ae8;
+        }
+        
+        .instructions {
+            background-color: #fffde7;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin-top: 40px;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .instructions h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .instructions ul {
+            padding-left: 20px;
+            color: #666;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        .instructions code {
+            background-color: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eaeaea;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .config-section {
+                flex-direction: column;
+            }
+            
+            .section-title {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .result-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>长图分割工具</h1>
+            <p class="subtitle">上传一张长图，配置分割数量，一键分割并批量下载所有图片</p>
+        </header>
+        
+        <section class="config-section">
+            <div class="upload-area">
+                <div class="upload-icon">📤</div>
+                <div class="upload-text">
+                    <h3>选择一张长图上传</h3>
+                    <p>支持JPG、PNG、GIF等格式，图片将按配置数量分割</p>
+                </div>
+                <input type="file" id="fileInput" accept="image/*">
+                <button class="upload-btn" id="selectFileBtn">选择图片</button>
+                
+                <div class="image-info hidden" id="imageInfo">
+                    <div class="info-item">
+                        <span class="info-label">原始尺寸</span>
+                        <span id="originalSize">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">分割数量</span>
+                        <span id="splitCountDisplay">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">每张高度</span>
+                        <span id="pieceHeight">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="config-area">
+                <h3 style="margin-bottom: 20px; color: #2c3e50;">分割配置</h3>
+                
+                <div class="config-item">
+                    <label class="config-label" for="splitCount">分割数量</label>
+                    <input type="number" id="splitCount" class="config-input" min="2" max="20" value="2">
+                    <div class="range-container">
+                        <input type="range" id="splitRange" min="2" max="20" value="2" step="1">
+                        <span class="range-value" id="rangeValue">2</span>
+                    </div>
+                    <p style="font-size: 14px; color: #7f8c8d; margin-top: 8px;">将图片分割为多少张（2-20张）</p>
+                </div>
+                
+                <div class="config-item">
+                    <label class="config-label" for="fileNamePrefix">文件名前缀</label>
+                    <input type="text" id="fileNamePrefix" class="config-input" value="分割图片">
+                    <p style="font-size: 14px; color: #7f8c8d; margin-top: 8px;">下载的文件将以"前缀+序号"命名，例如：分割图片-1.png</p>
+                </div>
+                
+                <div class="config-item">
+                    <label class="config-label" for="imageFormat">图片格式</label>
+                    <select id="imageFormat" class="config-input">
+                        <option value="jpeg">JPEG（较小文件）</option>
+                        <option value="png">PNG（高质量，无损）</option>
+                        <option value="webp">WebP（现代格式）</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+        
+        <div class="actions">
+            <button class="action-btn" id="splitBtn">分割图片</button>
+            <button class="action-btn disabled" id="downloadAllBtn" disabled>一键下载全部</button>
+            <button class="action-btn" id="resetBtn">重置</button>
+        </div>
+        
+        <section class="results-section hidden" id="resultsSection">
+            <div class="section-title">
+                <h2>分割结果</h2>
+                <div class="result-counter" id="resultCounter">共 0 张图片</div>
+            </div>
+            <div class="result-container" id="resultContainer">
+                <!-- 分割结果将动态添加到这里 -->
+            </div>
+        </section>
+        
+        <div class="instructions">
+            <h3>使用说明</h3>
+            <ul>
+                <li>上传一张长图（例如：宽度800px，高度3000px）</li>
+                <li>设置分割数量（2-20张），宽度保持不变，高度平均分割</li>
+                <li>点击"分割图片"按钮，图片将按设置数量分割</li>
+                <li>分割完成后可以预览所有图片，点击"一键下载全部"批量下载</li>
+                <li>分割后的图片将按顺序命名为：文件名前缀-1、文件名前缀-2、...</li>
+                <li>点击"重置"按钮可以重新上传新的图片</li>
+            </ul>
+        </div>
+        
+        <footer>
+            <p>长图分割工具 &copy; 2023 - 使用HTML5 Canvas技术实现</p>
+        </footer>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const fileInput = document.getElementById('fileInput');
+        const selectFileBtn = document.getElementById('selectFileBtn');
+        const splitBtn = document.getElementById('splitBtn');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const imageInfo = document.getElementById('imageInfo');
+        const originalSize = document.getElementById('originalSize');
+        const splitCountDisplay = document.getElementById('splitCountDisplay');
+        const pieceHeight = document.getElementById('pieceHeight');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultContainer = document.getElementById('resultContainer');
+        const resultCounter = document.getElementById('resultCounter');
+        
+        // 配置元素
+        const splitCountInput = document.getElementById('splitCount');
+        const splitRangeInput = document.getElementById('splitRange');
+        const rangeValue = document.getElementById('rangeValue');
+        const fileNamePrefixInput = document.getElementById('fileNamePrefix');
+        const imageFormatSelect = document.getElementById('imageFormat');
+        
+        // 存储数据
+        let originalImage = null;
+        let splitImageUrls = [];
+        let splitImageData = [];
+        
+        // 同步分割数量输入框和滑块
+        splitCountInput.addEventListener('input', function() {
+            const value = Math.min(20, Math.max(2, parseInt(this.value) || 2));
+            this.value = value;
+            splitRangeInput.value = value;
+            rangeValue.textContent = value;
+            updateSplitInfo();
+        });
+        
+        splitRangeInput.addEventListener('input', function() {
+            splitCountInput.value = this.value;
+            rangeValue.textContent = this.value;
+            updateSplitInfo();
+        });
+        
+        // 点击选择文件按钮触发文件输入
+        selectFileBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        // 文件选择变化事件
+        fileInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                const file = this.files[0];
+                
+                // 检查文件类型
+                if (!file.type.match('image.*')) {
+                    alert('请选择图片文件！');
+                    return;
+                }
+                
+                // 读取图片
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // 创建图片对象
+                    const img = new Image();
+                    img.onload = function() {
+                        originalImage = img;
+                        
+                        // 显示图片信息
+                        originalSize.textContent = `${img.width} × ${img.height} 像素`;
+                        updateSplitInfo();
+                        imageInfo.classList.remove('hidden');
+                        
+                        // 启用分割按钮
+                        splitBtn.disabled = false;
+                        splitBtn.classList.remove('disabled');
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // 更新分割信息
+        function updateSplitInfo() {
+            if (!originalImage) return;
+            
+            const count = parseInt(splitCountInput.value);
+            splitCountDisplay.textContent = `${count} 张`;
+            
+            const pieceHeightValue = Math.floor(originalImage.height / count);
+            pieceHeight.textContent = `${pieceHeightValue} 像素`;
+        }
+        
+        // 分割图片
+        splitBtn.addEventListener('click', function() {
+            if (!originalImage) {
+                alert('请先上传图片！');
+                return;
+            }
+            
+            // 获取分割数量
+            const splitCount = parseInt(splitCountInput.value);
+            if (splitCount < 2 || splitCount > 20) {
+                alert('分割数量必须在2-20之间！');
+                return;
+            }
+            
+            // 计算每张图片的高度
+            const originalWidth = originalImage.width;
+            const originalHeight = originalImage.height;
+            const pieceHeight = Math.floor(originalHeight / splitCount);
+            
+            // 清空之前的结果
+            splitImageUrls = [];
+            splitImageData = [];
+            resultContainer.innerHTML = '';
+            
+            // 获取图片格式和质量
+            const format = imageFormatSelect.value;
+            let mimeType, quality;
+            
+            switch(format) {
+                case 'jpeg':
+                    mimeType = 'image/jpeg';
+                    quality = 0.9;
+                    break;
+                case 'webp':
+                    mimeType = 'image/webp';
+                    quality = 0.9;
+                    break;
+                case 'png':
+                default:
+                    mimeType = 'image/png';
+                    quality = 1.0;
+            }
+            
+            // 开始分割图片
+            for (let i = 0; i < splitCount; i++) {
+                // 计算当前片段的高度（最后一片可能高度不同）
+                let currentPieceHeight = pieceHeight;
+                if (i === splitCount - 1) {
+                    // 最后一片取剩余所有高度
+                    currentPieceHeight = originalHeight - (pieceHeight * i);
+                }
+                
+                // 创建Canvas元素
+                const canvas = document.createElement('canvas');
+                canvas.width = originalWidth;
+                canvas.height = currentPieceHeight;
+                
+                // 获取上下文并绘制图片片段
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(
+                    originalImage,
+                    0, i * pieceHeight, // 源图像坐标
+                    originalWidth, currentPieceHeight, // 源图像尺寸
+                    0, 0, // 目标Canvas坐标
+                    originalWidth, currentPieceHeight // 目标Canvas尺寸
+                );
+                
+                // 将Canvas转换为图片URL
+                let imageUrl;
+                if (format === 'png') {
+                    imageUrl = canvas.toDataURL(mimeType);
+                } else {
+                    imageUrl = canvas.toDataURL(mimeType, quality);
+                }
+                
+                // 存储图片数据
+                splitImageUrls.push(imageUrl);
+                splitImageData.push({
+                    url: imageUrl,
+                    width: originalWidth,
+                    height: currentPieceHeight,
+                    index: i + 1
+                });
+                
+                // 创建结果项并添加到页面
+                createResultItem(i + 1, imageUrl, originalWidth, currentPieceHeight, format);
+            }
+            
+            // 更新结果计数器
+            resultCounter.textContent = `共 ${splitCount} 张图片`;
+            
+            // 显示结果区域
+            resultsSection.classList.remove('hidden');
+            
+            // 启用下载全部按钮
+            downloadAllBtn.disabled = false;
+            downloadAllBtn.classList.remove('disabled');
+            
+            // 滚动到结果区域
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        });
+        
+        // 创建结果项
+        function createResultItem(index, imageUrl, width, height, format) {
+            const resultItem = document.createElement('div');
+            resultItem.className = 'result-item';
+            
+            // 文件名前缀
+            const prefix = fileNamePrefixInput.value || '分割图片';
+            const fileName = `${prefix}-${index}.${format}`;
+            
+            resultItem.innerHTML = `
+                <div class="result-header">
+                    <div class="result-title">第 ${index} 部分</div>
+                    <div class="result-size">${width} × ${height}</div>
+                </div>
+                <img src="${imageUrl}" class="result-image" alt="分割图片第${index}部分">
+                <a href="${imageUrl}" download="${fileName}" class="download-btn">下载第 ${index} 部分</a>
+            `;
+            
+            resultContainer.appendChild(resultItem);
+        }
+        
+        // 批量下载所有图片
+        downloadAllBtn.addEventListener('click', function() {
+            if (splitImageData.length === 0) {
+                alert('没有可下载的图片，请先分割图片！');
+                return;
+            }
+            
+            // 创建并触发所有下载链接
+            const prefix = fileNamePrefixInput.value || '分割图片';
+            const format = imageFormatSelect.value;
+            
+            splitImageData.forEach((data, index) => {
+                const fileName = `${prefix}-${data.index}.${format}`;
+                const link = document.createElement('a');
+                link.href = data.url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+            
+            // 显示下载完成提示
+            alert(`已开始下载 ${splitImageData.length} 张图片，请查看浏览器下载列表！`);
+        });
+        
+        // 重置
+        resetBtn.addEventListener('click', function() {
+            // 重置所有状态
+            originalImage = null;
+            splitImageUrls = [];
+            splitImageData = [];
+            fileInput.value = '';
+            imageInfo.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+            resultContainer.innerHTML = '';
+            
+            // 重置按钮状态
+            splitBtn.disabled = false;
+            splitBtn.classList.remove('disabled');
+            downloadAllBtn.disabled = true;
+            downloadAllBtn.classList.add('disabled');
+            
+            // 重置配置
+            splitCountInput.value = 2;
+            splitRangeInput.value = 2;
+            rangeValue.textContent = '2';
+            fileNamePrefixInput.value = '分割图片';
+            imageFormatSelect.value = 'png';
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>长图缝合工具 - 满血性能版</title>
+    <style>
+        * {
+            user-select: none;
+            box-sizing: border-box;
+        }
+        :root {
+            --sidebar-width: 85px;
+            --bg-color: #121212;
+            --accent-color: #ff4757;
+            --sidebar-bg: #1e1e1e;
+        }
+
+        body {
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background: var(--bg-color);
+            color: white;
+            font-family: system-ui, 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        /* 左侧边栏 */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            gap: 15px;
+            z-index: 1000;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .side-btn {
+            width: 56px;
+            background: #2c2c2c;
+            border: 1px solid #444;
+            border-radius: 12px;
+            color: white;
+            cursor: pointer;
+            font-size: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 8px 0;
+            transition: all 0.2s ease;
+        }
+        .side-btn:hover { background: var(--accent-color); border-color: var(--accent-color); transform: scale(1.02);}
+        .side-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; background: #2c2c2c; border-color: #444;}
+        .side-btn span { font-size: 20px; margin-bottom: 4px; }
+
+        /* 颜色区域 */
+        .color-section {
+            margin-top: 5px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            border-top: 1px solid #333;
+            padding-top: 12px;
+        }
+        .color-label {
+            font-size: 10px;
+            color: #aaa;
+        }
+        #fill-color-picker {
+            width: 44px;
+            height: 44px;
+            border: 2px solid #555;
+            border-radius: 50%;
+            cursor: pointer;
+            background: #ffffff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        #fill-color-picker::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        #fill-color-picker::-webkit-color-swatch {
+            border: none;
+            border-radius: 50%;
+        }
+        
+        .fill-btns {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            align-items: center;
+        }
+        .fill-btns .side-btn {
+            width: 56px;
+            font-size: 9px;
+        }
+
+        /* 主舞台 */
+        #stage {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #0a0a0a;
+            touch-action: none;
+            cursor: default;
+        }
+
+        /* 右侧边栏 - 多图排序 */
+        .right-sidebar {
+            width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            border-left: 1px solid #333;
+            display: none; 
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            gap: 15px;
+            z-index: 1000;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .thumbnail-item {
+            width: 65px;
+            height: 65px;
+            background: #2c2c2c;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: grab;
+            object-fit: cover;
+            flex-shrink: 0;
+            transition: border-color 0.2s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .thumbnail-item:active {
+            cursor: grabbing;
+        }
+        .thumbnail-item.drag-over-top {
+            border-top: 3px solid var(--accent-color);
+        }
+        .thumbnail-item.drag-over-bottom {
+            border-bottom: 3px solid var(--accent-color);
+        }
+
+        /* 大上传占位符 */
+        .upload-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            transition: opacity 0.2s;
+        }
+        .big-upload-btn {
+            background: rgba(30,30,40,0.85);
+            backdrop-filter: blur(12px);
+            border-radius: 64px;
+            padding: 208px 408px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            border: 2px dashed var(--accent-color);
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 60px;
+            font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .big-upload-btn:hover {
+            background: var(--accent-color);
+            border-color: white;
+            transform: scale(1.02);
+        }
+        .big-upload-btn span {
+            font-size: 52px;
+        }
+
+        #canvas-container {
+            position: absolute;
+            transform-origin: 0 0;
+            display: none;
+        }
+        canvas {
+            display: block;
+            background: white;
+            box-shadow: 0 0 30px rgba(0,0,0,0.6);
+        }
+
+        /* 选区盒子 */
+        #selections-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .selection-box {
+            position: absolute;
+            left: 0;
+            right: 0;
+            background: rgba(255, 71, 87, 0.4);
+            border-top: 2px solid var(--accent-color);
+            border-bottom: 2px solid var(--accent-color);
+            pointer-events: none;
+            box-sizing: border-box;
+            box-shadow: inset 0 0 0 1px rgba(255,71,87,0.3);
+        }
+
+        .guide-line {
+            position: fixed;
+            left: var(--sidebar-width);
+            right: var(--sidebar-width);
+            height: 0;
+            border-top: 2px dashed var(--accent-color);
+            pointer-events: none;
+            z-index: 600;
+            display: none;
+        }
+
+        #file-input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <!-- 增加了快捷键Title提示 -->
+    <button class="side-btn" id="upload-btn-side" title="快捷键: U"><span>📁</span>上传</button>
+    <button class="side-btn" id="undo-btn" disabled title="快捷键: Ctrl + Z"><span>↩</span>撤销</button>
+    <button class="side-btn" id="copy-btn" disabled title="快捷键: Ctrl + C"><span>📋</span>复制</button>
+    <button class="side-btn" id="save-btn" disabled title="快捷键: Ctrl + S"><span>💾</span>保存</button>
+    
+    <div class="color-section">
+        <div class="color-label">填充颜色</div>
+        <input type="color" id="fill-color-picker" value="#ffffff">
+        <div class="fill-btns">
+            <button class="side-btn" id="fill-replace-btn" disabled title="快捷键: R 或 Delete"><span>🎨</span>选区填充</button>
+            <button class="side-btn" id="fill-insert-btn" disabled title="快捷键: I"><span>➕</span>插入填充</button>
+        </div>
+    </div>
+</div>
+
+<div id="stage">
+    <div class="upload-overlay" id="uploadOverlay">
+        <div class="big-upload-btn" id="bigUploadBtn">
+            <span>➕</span>
+            <div>点击或拖拽上传图片</div>
+        </div>
+    </div>
+    <div id="guide-y" class="guide-line"></div>
+    <div id="canvas-container">
+        <canvas id="mainCanvas"></canvas>
+        <div id="selections-wrapper"></div>
+    </div>
+</div>
+
+<div class="right-sidebar" id="right-sidebar"></div>
+
+<input type="file" id="file-input" accept="image/*" multiple>
+
+<script>
+    // ---------- DOM 元素 ----------
+    const stage = document.getElementById('stage');
+    const container = document.getElementById('canvas-container');
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d');
+    const guideY = document.getElementById('guide-y');
+    const selWrapper = document.getElementById('selections-wrapper');
+    const undoBtn = document.getElementById('undo-btn');
+    const copyBtn = document.getElementById('copy-btn');
+    const saveBtn = document.getElementById('save-btn');
+    const fillReplaceBtn = document.getElementById('fill-replace-btn');
+    const fillInsertBtn = document.getElementById('fill-insert-btn');
+    const fillColorPicker = document.getElementById('fill-color-picker');
+    const uploadOverlay = document.getElementById('uploadOverlay');
+    const bigUploadBtn = document.getElementById('bigUploadBtn');
+    const sideUploadBtn = document.getElementById('upload-btn-side');
+    const fileInput = document.getElementById('file-input');
+    const rightSidebar = document.getElementById('right-sidebar');
+
+    // ---------- 全局状态 ----------
+    let sourceImages = []; // {id, img}
+    let hasImage = false;
+    let scale = 1.0;
+    let translateX = 0, translateY = 0;
+    let historyStack = []; // 存储离屏 Canvas 对象（不再存Base64字符串，极速！）
+    
+    let isPanning = false;
+    let isSelecting = false;
+    let startX = 0, startY = 0;
+    
+    let selectionRanges = []; // {y1, y2}
+    let currentRange = null;
+    let selectStartY = 0;
+    
+    let scrollSpeed = 0;
+    let rafId = null;
+    let spaceDown = false;
+    
+    // ---------- 性能优化版：保存与撤销（使用内存克隆） ----------
+    function saveState() {
+        if (!hasImage || canvas.width === 0 || canvas.height === 0) return;
+        
+        // 核心优化：直接在内存中建立一个同样大小的画布，直接克隆像素，彻底告别 toDataURL 卡顿
+        const backupCanvas = document.createElement('canvas');
+        backupCanvas.width = canvas.width;
+        backupCanvas.height = canvas.height;
+        backupCanvas.getContext('2d').drawImage(canvas, 0, 0);
+        
+        historyStack.push(backupCanvas);
+        
+        // 为防大图吃爆内存，最多保存10步历史
+        if (historyStack.length > 10) historyStack.shift();
+        
+        undoBtn.disabled = false;
+        updateFillButtonsState();
+    }
+    
+    function undo() {
+        if (historyStack.length === 0) return;
+        
+        const backupCanvas = historyStack.pop();
+        
+        canvas.width = backupCanvas.width;
+        canvas.height = backupCanvas.height;
+        ctx.drawImage(backupCanvas, 0, 0);
+        
+        clearSelections();
+        if (historyStack.length === 0) undoBtn.disabled = true;
+        updateFillButtonsState();
+        
+        adjustViewAfterResize();
+    }
+
+    // ---------- UI 辅助函数 ----------
+    function updateTransform() {
+        container.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+    }
+    
+    function renderSelectionBoxes() {
+        selWrapper.innerHTML = '';
+        const allRanges = [...selectionRanges];
+        if (currentRange) allRanges.push(currentRange);
+        
+        allRanges.forEach(range => {
+            const div = document.createElement('div');
+            div.className = 'selection-box';
+            const topPx = range.y1;
+            const heightPx = range.y2 - range.y1;
+            div.style.top = topPx + 'px';
+            div.style.height = heightPx + 'px';
+            selWrapper.appendChild(div);
+        });
+    }
+    
+    function clearSelections() {
+        selectionRanges = [];
+        currentRange = null;
+        renderSelectionBoxes();
+        updateFillButtonsState();
+    }
+    
+    function updateFillButtonsState() {
+        const hasSelection = hasImage && selectionRanges.length > 0;
+        fillReplaceBtn.disabled = !hasSelection;
+        fillInsertBtn.disabled = !hasSelection;
+    }
+    
+    function getMergedRanges() {
+        if (selectionRanges.length === 0) return [];
+        let ranges = [...selectionRanges];
+        ranges.sort((a, b) => a.y1 - b.y1);
+        const merged = [];
+        let last = ranges[0];
+        for (let i = 1; i < ranges.length; i++) {
+            if (ranges[i].y1 < last.y2) {
+                last.y2 = Math.max(last.y2, ranges[i].y2);
+            } else {
+                merged.push({ ...last });
+                last = ranges[i];
+            }
+        }
+        merged.push({ ...last });
+        return merged;
+    }
+
+    // ---------- 图像处理核心（缝合、填充） ----------
+    function performMultiCut() {
+        if (!hasImage || selectionRanges.length === 0) return;
+        saveState();
+        
+        const merged = getMergedRanges();
+        let totalRemoveHeight = 0;
+        merged.forEach(r => totalRemoveHeight += (r.y2 - r.y1));
+        const newHeight = canvas.height - totalRemoveHeight;
+        if (newHeight <= 0) return alert("裁剪后图片高度为零，无效操作");
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = newHeight;
+        const tCtx = tempCanvas.getContext('2d');
+        
+        let destY = 0;
+        let lastSrcY = 0;
+        merged.forEach(range => {
+            const keepHeight = range.y1 - lastSrcY;
+            if (keepHeight > 0) {
+                tCtx.drawImage(canvas, 0, lastSrcY, canvas.width, keepHeight, 0, destY, canvas.width, keepHeight);
+                destY += keepHeight;
+            }
+            lastSrcY = range.y2;
+        });
+        if (lastSrcY < canvas.height) {
+            const remainHeight = canvas.height - lastSrcY;
+            tCtx.drawImage(canvas, 0, lastSrcY, canvas.width, remainHeight, 0, destY, canvas.width, remainHeight);
+        }
+        
+        canvas.width = canvas.width;
+        canvas.height = newHeight;
+        ctx.drawImage(tempCanvas, 0, 0);
+        clearSelections();
+        adjustViewAfterResize();
+    }
+    
+    function fillReplace() {
+        if (!hasImage || selectionRanges.length === 0) return;
+        saveState();
+        
+        const merged = getMergedRanges();
+        const fillColor = fillColorPicker.value;
+        
+        ctx.fillStyle = fillColor;
+        merged.forEach(range => {
+            ctx.fillRect(0, range.y1, canvas.width, range.y2 - range.y1);
+        });
+        
+        clearSelections();
+    }
+    
+    function fillInsert() {
+        if (!hasImage || selectionRanges.length === 0) return;
+        saveState();
+        
+        const merged = getMergedRanges();
+        const fillColor = fillColorPicker.value;
+        
+        let totalInsertHeight = 0;
+        merged.forEach(r => totalInsertHeight += (r.y2 - r.y1));
+        const newHeight = canvas.height + totalInsertHeight;
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = newHeight;
+        const tCtx = tempCanvas.getContext('2d');
+        
+        let writeY = 0;
+        let readY = 0;
+        for (let i = 0; i < merged.length; i++) {
+            const seg = merged[i];
+            
+            const beforeHeight = seg.y1 - readY;
+            if (beforeHeight > 0) {
+                tCtx.drawImage(canvas, 0, readY, canvas.width, beforeHeight, 0, writeY, canvas.width, beforeHeight);
+                writeY += beforeHeight;
+            }
+            
+            const insertH = seg.y2 - seg.y1;
+            if (insertH > 0) {
+                tCtx.fillStyle = fillColor;
+                tCtx.fillRect(0, writeY, canvas.width, insertH);
+                writeY += insertH;
+            }
+            
+            const segContentHeight = seg.y2 - seg.y1;
+            if (segContentHeight > 0) {
+                tCtx.drawImage(canvas, 0, seg.y1, canvas.width, segContentHeight, 0, writeY, canvas.width, segContentHeight);
+                writeY += segContentHeight;
+            }
+            readY = seg.y2;
+        }
+        
+        if (readY < canvas.height) {
+            const remainH = canvas.height - readY;
+            tCtx.drawImage(canvas, 0, readY, canvas.width, remainH, 0, writeY, canvas.width, remainH);
+        }
+        
+        canvas.width = canvas.width;
+        canvas.height = newHeight;
+        ctx.drawImage(tempCanvas, 0, 0);
+        clearSelections();
+        adjustViewAfterResize();
+    }
+    
+    function adjustViewAfterResize() {
+        const stageRect = stage.getBoundingClientRect();
+        const canvasHeightInView = canvas.height * scale;
+        if (canvasHeightInView < stageRect.height) {
+            translateY = (stageRect.height - canvasHeightInView) / 2;
+        } else {
+            const maxTranslateY = 0;
+            const minTranslateY = stageRect.height - canvasHeightInView;
+            translateY = Math.min(maxTranslateY, Math.max(minTranslateY, translateY));
+        }
+        updateTransform();
+    }
+
+    // ---------- 多图排版渲染与拖拽逻辑 ----------
+    function renderMergedImage() {
+        if (sourceImages.length === 0) return;
+        
+        let maxWidth = 0;
+        sourceImages.forEach(item => {
+            if (item.img.width > maxWidth) maxWidth = item.img.width;
+        });
+        // 【核心优化】限制最大宽度不超过2000，避免超长图时浏览器GPU纹理爆显存导致卡顿
+        maxWidth = Math.min(maxWidth, 2000); 
+        
+        let totalHeight = 0;
+        const dimensions = sourceImages.map(item => {
+            const w = maxWidth;
+            const ratio = maxWidth / item.img.width;
+            const h = item.img.height * ratio;
+            totalHeight += h;
+            return { w, h };
+        });
+        
+        canvas.width = maxWidth;
+        canvas.height = Math.round(totalHeight);
+        
+        let currentY = 0;
+        sourceImages.forEach((item, index) => {
+            const dim = dimensions[index];
+            ctx.drawImage(item.img, 0, currentY, dim.w, dim.h);
+            currentY += dim.h;
+        });
+        
+        hasImage = true;
+        container.style.display = 'block';
+        uploadOverlay.style.display = 'none';
+        
+        const stageRect = stage.getBoundingClientRect();
+        scale = Math.min((stageRect.width - 40) / canvas.width, (stageRect.height - 40) / canvas.height, 1);
+        translateX = (stageRect.width - canvas.width * scale) / 2;
+        translateY = (stageRect.height - canvas.height * scale) / 2;
+        updateTransform();
+        
+        clearSelections();
+        saveBtn.disabled = false;
+        copyBtn.disabled = false;
+        updateFillButtonsState();
+        historyStack = [];
+        undoBtn.disabled = true;
+    }
+
+    function renderRightSidebar() {
+        if (sourceImages.length > 0) {
+            rightSidebar.style.display = 'flex';
+        } else {
+            rightSidebar.style.display = 'none';
+        }
+        rightSidebar.innerHTML = '';
+        sourceImages.forEach((item, index) => {
+            const imgEl = document.createElement('img');
+            imgEl.src = item.img.src;
+            imgEl.className = 'thumbnail-item';
+            imgEl.draggable = true;
+            imgEl.dataset.index = index;
+            
+            imgEl.addEventListener('dragstart', handleDragStart);
+            imgEl.addEventListener('dragend', handleDragEnd);
+            imgEl.addEventListener('dragover', handleDragOver);
+            imgEl.addEventListener('dragleave', handleDragLeave);
+            imgEl.addEventListener('drop', handleDrop);
+            
+            rightSidebar.appendChild(imgEl);
+        });
+    }
+
+    function handleDragStart(e) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', this.dataset.index);
+        setTimeout(() => { this.style.opacity = '0.4'; }, 0);
+    }
+    function handleDragEnd(e) {
+        this.style.opacity = '1';
+        document.querySelectorAll('.thumbnail-item').forEach(item => item.classList.remove('drag-over-top', 'drag-over-bottom'));
+    }
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = this.getBoundingClientRect();
+        if (e.clientY - rect.top < rect.height / 2) {
+            this.classList.add('drag-over-top');
+            this.classList.remove('drag-over-bottom');
+        } else {
+            this.classList.add('drag-over-bottom');
+            this.classList.remove('drag-over-top');
+        }
+    }
+    function handleDragLeave(e) {
+        this.classList.remove('drag-over-top', 'drag-over-bottom');
+    }
+    function handleDrop(e) {
+        e.stopPropagation();
+        this.classList.remove('drag-over-top', 'drag-over-bottom');
+        const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        let toIndex = parseInt(this.dataset.index);
+        
+        if (fromIndex === toIndex) return false;
+        const rect = this.getBoundingClientRect();
+        if (e.clientY - rect.top >= rect.height / 2) toIndex++; 
+        if (fromIndex < toIndex) toIndex--; 
+        
+        const movedItem = sourceImages.splice(fromIndex, 1)[0];
+        sourceImages.splice(toIndex, 0, movedItem);
+        
+        renderRightSidebar();
+        renderMergedImage();
+        return false;
+    }
+
+    // 文件上传处理
+    function fileToImage(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const tempImg = new Image();
+                tempImg.onload = () => resolve(tempImg);
+                tempImg.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handleUploadFiles(files) {
+        uploadOverlay.style.display = 'flex';
+        uploadOverlay.innerHTML = '<div style="font-size:32px; font-weight: bold; color:#ff4757;">正在拼接图片...</div>';
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.type.startsWith('image/')) {
+                const img = await fileToImage(file);
+                sourceImages.push({ id: Date.now() + i, img: img });
+            }
+        }
+        
+        renderRightSidebar();
+        renderMergedImage();
+        
+        uploadOverlay.innerHTML = `
+            <div class="big-upload-btn" id="bigUploadBtn">
+                <span>➕</span>
+                <div>点击或拖拽上传图片</div>
+            </div>`;
+        document.getElementById('bigUploadBtn').onclick = () => fileInput.click();
+    }
+
+    // ---------- 交互与事件 ----------
+    function startAutoScroll() {
+        if (scrollSpeed === 0 || !isSelecting) { stopAutoScroll(); return; }
+        translateY += scrollSpeed;
+        updateTransform();
+        rafId = requestAnimationFrame(startAutoScroll);
+    }
+    function stopAutoScroll() {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = null;
+    }
+    
+    // 【全新加入】全局键盘快捷键监听
+    function handleKeyDown(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        // 空格平移
+        if (e.code === 'Space') {
+            spaceDown = true;
+            e.preventDefault();
+            return;
+        }
+
+        const isCtrl = e.ctrlKey || e.metaKey;
+
+        // 撤销 (Ctrl+Z)
+        if (isCtrl && e.code === 'KeyZ') {
+            e.preventDefault();
+            if (!undoBtn.disabled) undoBtn.click();
+        } 
+        // 复制 (Ctrl+C)
+        else if (isCtrl && e.code === 'KeyC') {
+            e.preventDefault(); 
+            if (!copyBtn.disabled) copyBtn.click();
+        } 
+        // 保存 (Ctrl+S)
+        else if (isCtrl && e.code === 'KeyS') {
+            e.preventDefault(); 
+            if (!saveBtn.disabled) saveBtn.click();
+        } 
+        // 上传 (U)
+        else if (!isCtrl && e.code === 'KeyU') {
+            e.preventDefault();
+            sideUploadBtn.click();
+        } 
+        // 选区填充 (R 或 Delete 或 Backspace)
+        else if ((!isCtrl && e.code === 'KeyR') || e.code === 'Delete' || e.code === 'Backspace') {
+            e.preventDefault();
+            if (!fillReplaceBtn.disabled) fillReplaceBtn.click();
+        } 
+        // 插入填充 (I)
+        else if (!isCtrl && e.code === 'KeyI') {
+            e.preventDefault();
+            if (!fillInsertBtn.disabled) fillInsertBtn.click();
+        }
+    }
+    function handleKeyUp(e) {
+        if (e.code === 'Space') {
+            spaceDown = false;
+            e.preventDefault();
+        }
+    }
+    
+    function onMouseDown(e) {
+        if (!hasImage) return;
+        e.preventDefault();
+        
+        const buttons = e.buttons;
+        if ((spaceDown && (buttons & 1)) || ((buttons & 1) && (buttons & 2))) {
+            isPanning = true;
+            isSelecting = false;
+            startX = e.clientX - translateX;
+            startY = e.clientY - translateY;
+            return;
+        }
+        
+        if (e.button === 0 && !spaceDown) {
+            isSelecting = true;
+            isPanning = false;
+            if (!e.shiftKey) clearSelections();
+            
+            const rect = canvas.getBoundingClientRect();
+            let canvasY = (e.clientY - rect.top) / scale;
+            selectStartY = Math.min(Math.max(canvasY, 0), canvas.height);
+            currentRange = { y1: selectStartY, y2: selectStartY };
+            guideY.style.display = 'none';
+            renderSelectionBoxes();
+        }
+    }
+    
+    function onMouseMove(e) {
+        if (!hasImage) return;
+        
+        if (!isSelecting && !isPanning) {
+            guideY.style.display = 'block';
+            guideY.style.top = e.clientY + 'px';
+        } else {
+            guideY.style.display = 'none';
+        }
+        
+        if (isPanning) {
+            translateX = e.clientX - startX;
+            translateY = e.clientY - startY;
+            updateTransform();
+            return;
+        }
+        
+        if (isSelecting) {
+            const threshold = 55;
+            if (e.clientY > window.innerHeight - threshold) scrollSpeed = -14;
+            else if (e.clientY < threshold) scrollSpeed = 14;
+            else scrollSpeed = 0;
+            
+            if (scrollSpeed !== 0 && !rafId) startAutoScroll();
+            else if (scrollSpeed === 0 && rafId) stopAutoScroll();
+            
+            const rect = canvas.getBoundingClientRect();
+            let currentY = Math.min(Math.max((e.clientY - rect.top) / scale, 0), canvas.height);
+            if (currentRange) {
+                currentRange.y1 = Math.min(selectStartY, currentY);
+                currentRange.y2 = Math.max(selectStartY, currentY);
+                renderSelectionBoxes();
+            }
+        }
+    }
+    
+    function onMouseUp(e) {
+        if (isSelecting && currentRange) {
+            if (Math.abs(currentRange.y2 - currentRange.y1) > 1.5) {
+                selectionRanges.push({...currentRange});
+                updateFillButtonsState();
+            }
+            currentRange = null;
+            renderSelectionBoxes();
+        }
+        isPanning = false;
+        isSelecting = false;
+        scrollSpeed = 0;
+        stopAutoScroll();
+    }
+    
+    function onContextMenu(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (hasImage && selectionRanges.length > 0) performMultiCut();
+        return false;
+    }
+    
+    function onWheel(e) {
+        if (!hasImage) return;
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const newScale = Math.min(Math.max(0.05, scale * delta), 15);
+        if (newScale === scale) return;
+        
+        const rect = stage.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const oldWorldX = (mouseX - translateX) / scale;
+        const oldWorldY = (mouseY - translateY) / scale;
+        
+        scale = newScale;
+        translateX = mouseX - oldWorldX * scale;
+        translateY = mouseY - oldWorldY * scale;
+        updateTransform();
+    }
+    
+    function disableGlobalContextMenu(e) {
+        if (e.target.closest('#stage') || e.target.closest('.sidebar') || e.target.closest('.right-sidebar')) {
+            e.preventDefault();
+            return false;
+        }
+    }
+
+    // 处理全局拖拽文件上传
+    window.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+    window.addEventListener('drop', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleUploadFiles(e.dataTransfer.files);
+        }
+    });
+    
+    function bindEvents() {
+        stage.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        stage.addEventListener('contextmenu', onContextMenu);
+        stage.addEventListener('wheel', onWheel, { passive: false });
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        document.addEventListener('contextmenu', disableGlobalContextMenu);
+    }
+    
+    // ---------- 按钮事件绑定 ----------
+    sideUploadBtn.onclick = () => fileInput.click();
+    bigUploadBtn.onclick = () => fileInput.click();
+    fileInput.onchange = async (e) => {
+        if (e.target.files.length) await handleUploadFiles(e.target.files);
+        fileInput.value = '';
+    };
+    
+    undoBtn.onclick = () => undo();
+    saveBtn.onclick = () => {
+        const a = document.createElement('a');
+        a.download = `stitch_${Date.now()}.png`;
+        a.href = canvas.toDataURL();
+        a.click();
+    };
+    copyBtn.onclick = () => {
+        canvas.toBlob(blob => {
+            if (blob) navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(() => alert("已复制图片到剪贴板"));
+        });
+    };
+    fillReplaceBtn.onclick = () => fillReplace();
+    fillInsertBtn.onclick = () => fillInsert();
+    
+    function init() {
+        bindEvents();
+        container.style.display = 'none';
+        uploadOverlay.style.display = 'flex';
+        hasImage = false;
+        saveBtn.disabled = true;
+        copyBtn.disabled = true;
+        fillReplaceBtn.disabled = true;
+        fillInsertBtn.disabled = true;
+        undoBtn.disabled = true;
+    }
+    
+    init();
+</script>
+</body>
+</html>

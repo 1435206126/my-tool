@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的日常记录工具</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 1.2rem;
+        }
+        
+        .add-btn-container {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .add-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(52, 152, 219, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 0 auto;
+        }
+        
+        .add-btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .add-btn:active {
+            transform: translateY(0);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            animation: modalFade 0.3s ease;
+        }
+        
+        @keyframes modalFade {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-title {
+            font-size: 1.5rem;
+            color: #2c3e50;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            border-color: #3498db;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .save-btn, .cancel-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .save-btn {
+            background: #2ecc71;
+            color: white;
+        }
+        
+        .save-btn:hover {
+            background: #27ae60;
+        }
+        
+        .cancel-btn {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .cancel-btn:hover {
+            background: #c0392b;
+        }
+        
+        .notes-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .note {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+            cursor: grab;
+            user-select: none;
+        }
+        
+        .note:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .note.dragging {
+            opacity: 0.7;
+            transform: rotate(5deg);
+            box-shadow: 0 12px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        
+        .note-title {
+            font-size: 1.3rem;
+            color: #2c3e50;
+            margin-right: 10px;
+            word-break: break-word;
+        }
+        
+        .note-actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .action-btn {
+            background: none;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+        
+        .copy-btn {
+            background: #3498db;
+            color: white;
+        }
+        
+        .copy-btn:hover {
+            background: #2980b9;
+        }
+        
+        .edit-btn {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .edit-btn:hover {
+            background: #e67e22;
+        }
+        
+        .delete-btn {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .delete-btn:hover {
+            background: #c0392b;
+        }
+        
+        .note-content {
+            color: #555;
+            line-height: 1.5;
+            word-break: break-word;
+            margin-bottom: 15px;
+        }
+        
+        .note-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            color: #95a5a6;
+            border-top: 1px solid #ecf0f1;
+            padding-top: 10px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+            grid-column: 1 / -1;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+        
+        @media (max-width: 768px) {
+            .notes-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .modal-content {
+                width: 95%;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>我的日常记录工具</h1>
+            <p class="subtitle">记录生活中的点滴，管理日常内容</p>
+        </header>
+        
+        <div class="add-btn-container">
+            <button class="add-btn" id="addBtn">
+                <i class="fas fa-plus"></i> 添加新记录
+            </button>
+        </div>
+        
+        <div class="notes-container" id="notesContainer">
+            <div class="empty-state" id="emptyState">
+                <i class="fas fa-sticky-note"></i>
+                <h3>还没有任何记录</h3>
+                <p>点击上方按钮添加第一条记录</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">添加新记录</h2>
+                <button class="close-btn" id="closeModal">&times;</button>
+            </div>
+            <form id="noteForm">
+                <div class="form-group">
+                    <label for="noteTitle">标题</label>
+                    <input type="text" id="noteTitle" placeholder="输入标题..." required>
+                </div>
+                <div class="form-group">
+                    <label for="noteContent">内容</label>
+                    <textarea id="noteContent" placeholder="输入内容..." required></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="cancel-btn" id="cancelBtn">取消</button>
+                    <button type="submit" class="save-btn" id="saveBtn">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div class="toast" id="toast">内容已复制到剪贴板</div>
+
+    <script>
+        // DOM元素
+        const addBtn = document.getElementById('addBtn');
+        const modal = document.getElementById('modal');
+        const closeModal = document.getElementById('closeModal');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const noteForm = document.getElementById('noteForm');
+        const notesContainer = document.getElementById('notesContainer');
+        const emptyState = document.getElementById('emptyState');
+        const modalTitle = document.getElementById('modalTitle');
+        const saveBtn = document.getElementById('saveBtn');
+        const toast = document.getElementById('toast');
+        
+        // 从本地存储加载笔记
+        let notes = JSON.parse(localStorage.getItem('dailyNotes')) || [];
+        let currentEditingIndex = -1;
+        let draggedNote = null;
+        
+        // 显示/隐藏空状态
+        function toggleEmptyState() {
+            if (notes.length === 0) {
+                emptyState.style.display = 'block';
+            } else {
+                emptyState.style.display = 'none';
+            }
+        }
+        
+        // 渲染笔记
+        function renderNotes() {
+            notesContainer.innerHTML = '';
+            
+            if (notes.length === 0) {
+                toggleEmptyState();
+                return;
+            }
+            
+            notes.forEach((note, index) => {
+                const noteElement = document.createElement('div');
+                noteElement.className = 'note';
+                noteElement.setAttribute('draggable', 'true');
+                noteElement.setAttribute('data-index', index);
+                
+                noteElement.innerHTML = `
+                    <div class="note-header">
+                        <h3 class="note-title">${note.title}</h3>
+                        <div class="note-actions">
+                            <button class="action-btn copy-btn" data-index="${index}" title="复制内容">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                            <button class="action-btn edit-btn" data-index="${index}" title="编辑">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="action-btn delete-btn" data-index="${index}" title="删除">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="note-content">${note.content}</div>
+                    <div class="note-footer">
+                        <span>创建: ${formatDate(note.createdAt)}</span>
+                        <span>${note.updatedAt ? '更新: ' + formatDate(note.updatedAt) : ''}</span>
+                    </div>
+                `;
+                notesContainer.appendChild(noteElement);
+            });
+            
+            // 添加事件监听器
+            addEventListeners();
+            toggleEmptyState();
+        }
+        
+        // 添加事件监听器
+        function addEventListeners() {
+            // 删除按钮
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    deleteNote(index);
+                });
+            });
+            
+            // 编辑按钮
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    editNote(index);
+                });
+            });
+            
+            // 复制按钮
+            document.querySelectorAll('.copy-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    copyNoteContent(index);
+                });
+            });
+            
+            // 拖动功能
+            document.querySelectorAll('.note').forEach(note => {
+                note.addEventListener('dragstart', handleDragStart);
+                note.addEventListener('dragend', handleDragEnd);
+                note.addEventListener('dragover', handleDragOver);
+                note.addEventListener('dragenter', handleDragEnter);
+                note.addEventListener('dragleave', handleDragLeave);
+                note.addEventListener('drop', handleDrop);
+            });
+        }
+        
+        // 拖动功能实现
+        function handleDragStart(e) {
+            draggedNote = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+        }
+        
+        function handleDragEnd() {
+            this.classList.remove('dragging');
+            document.querySelectorAll('.note').forEach(note => {
+                note.style.borderTop = '';
+            });
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            return false;
+        }
+        
+        function handleDragEnter(e) {
+            this.style.borderTop = '2px solid #3498db';
+        }
+        
+        function handleDragLeave() {
+            this.style.borderTop = '';
+        }
+        
+        function handleDrop(e) {
+            e.stopPropagation();
+            
+            if (draggedNote !== this) {
+                const fromIndex = parseInt(draggedNote.getAttribute('data-index'));
+                const toIndex = parseInt(this.getAttribute('data-index'));
+                
+                // 重新排序数组
+                const [movedNote] = notes.splice(fromIndex, 1);
+                notes.splice(toIndex, 0, movedNote);
+                
+                // 保存并重新渲染
+                saveNotes();
+                renderNotes();
+            }
+            
+            this.style.borderTop = '';
+            return false;
+        }
+        
+        // 保存笔记到本地存储
+        function saveNotes() {
+            localStorage.setItem('dailyNotes', JSON.stringify(notes));
+        }
+        
+        // 添加新笔记
+        function addNote(title, content) {
+            const newNote = {
+                title: title,
+                content: content,
+                createdAt: new Date().toISOString(),
+                updatedAt: null
+            };
+            
+            notes.push(newNote);
+            saveNotes();
+            renderNotes();
+        }
+        
+        // 编辑笔记
+        function editNote(index) {
+            currentEditingIndex = index;
+            const note = notes[index];
+            
+            document.getElementById('noteTitle').value = note.title;
+            document.getElementById('noteContent').value = note.content;
+            modalTitle.textContent = '编辑记录';
+            saveBtn.textContent = '更新';
+            
+            modal.style.display = 'flex';
+            document.getElementById('noteTitle').focus();
+        }
+        
+        // 更新笔记
+        function updateNote(index, title, content) {
+            notes[index].title = title;
+            notes[index].content = content;
+            notes[index].updatedAt = new Date().toISOString();
+            
+            saveNotes();
+            renderNotes();
+        }
+        
+        // 删除笔记
+        function deleteNote(index) {
+            if (confirm('确定要删除这条记录吗？')) {
+                notes.splice(index, 1);
+                saveNotes();
+                renderNotes();
+            }
+        }
+        
+        // 复制笔记内容
+        function copyNoteContent(index) {
+            const content = notes[index].content;
+            navigator.clipboard.writeText(content).then(() => {
+                showToast('内容已复制到剪贴板');
+            }).catch(err => {
+                console.error('复制失败: ', err);
+                showToast('复制失败，请重试');
+            });
+        }
+        
+        // 显示提示信息
+        function showToast(message) {
+            toast.textContent = message;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+        
+        // 格式化日期
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
+        // 事件监听器
+        addBtn.addEventListener('click', () => {
+            currentEditingIndex = -1;
+            modalTitle.textContent = '添加新记录';
+            saveBtn.textContent = '保存';
+            modal.style.display = 'flex';
+            noteForm.reset();
+            document.getElementById('noteTitle').focus();
+        });
+        
+        closeModal.addEventListener('click', () => {
+            modal.style.display = 'none';
+            noteForm.reset();
+        });
+        
+        cancelBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+            noteForm.reset();
+        });
+        
+        noteForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const title = document.getElementById('noteTitle').value.trim();
+            const content = document.getElementById('noteContent').value.trim();
+            
+            if (title && content) {
+                if (currentEditingIndex === -1) {
+                    addNote(title, content);
+                } else {
+                    updateNote(currentEditingIndex, title, content);
+                }
+                modal.style.display = 'none';
+                noteForm.reset();
+            }
+        });
+        
+        // 点击模态框外部关闭
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+                noteForm.reset();
+            }
+        });
+        
+        // 初始化渲染
+        renderNotes();
+    </script>
+</body>
+</html>

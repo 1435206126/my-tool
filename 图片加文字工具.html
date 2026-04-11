@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片编辑器 (完美局部调整版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f1f5f9;
+            --panel-w: 330px;
+        }
+        body { margin: 0; display: flex; height: 100vh; font-family: "Microsoft YaHei", sans-serif; background: var(--bg); overflow: hidden; }
+        
+        /* 左侧面板 */
+        .sidebar {
+            width: var(--panel-w);
+            background: white;
+            border-right: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            overflow-y: auto;
+            flex-shrink: 0;
+            z-index: 20;
+        }
+
+        .group { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; }
+        h3 { margin: 0 0 10px 0; font-size: 14px; color: #334155; font-weight: 700; }
+        
+        label { display: block; font-size: 12px; color: #64748b; margin: 8px 0 4px; }
+        .row { display: flex; gap: 8px; align-items: center; }
+        .col { flex: 1; }
+        
+        input[type="range"] { width: 100%; cursor: pointer; margin: 5px 0; }
+        input[type="color"] { border: none; width: 30px; height: 30px; padding: 0; cursor: pointer; background: none; }
+        select, button { width: 100%; padding: 6px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #cbd5e1; }
+        
+        button { background: var(--primary); color: white; border: none; cursor: pointer; transition: 0.2s; padding: 8px; }
+        button:hover { opacity: 0.9; }
+        button.outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+        
+        /* 预设 grid */
+        .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 10px; }
+        .preset-item { position: relative; aspect-ratio: 1; cursor: pointer; }
+        .preset-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 2px solid #eee; }
+        .preset-item:hover img { border-color: var(--primary); }
+        .preset-del { position: absolute; top: -4px; right: -4px; background: red; color: white; width: 14px; height: 14px; border-radius: 50%; font-size: 10px; display: none; align-items: center; justify-content: center; }
+        .preset-item:hover .preset-del { display: flex; }
+
+        /* 画布区 */
+        .workspace { flex: 1; background: #cbd5e1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 50px; }
+        
+        #canvas-box {
+            background: white;
+            box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.25);
+            position: relative; 
+            display: inline-block; 
+        }
+
+        #img-stage { position: relative; line-height: 0; user-select: none; }
+        #main-img { max-width: 100%; max-height: 85vh; display: block; pointer-events: none; }
+
+        /* 文字组件 */
+        .text-wrapper {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            z-index: 10;
+            width: max-content; 
+            max-width: 1000vw; 
+        }
+
+        .text-wrapper.editing { cursor: text; z-index: 100; }
+
+        .text-content {
+            font-size: 24px;
+            font-weight: bold;
+            line-height: 1.4;
+            outline: none;
+            white-space: pre; /* 不换行 */
+            display: inline-block;
+            border: 2px dashed transparent;
+            min-width: 1em;
+            padding: 5px;
+        }
+
+        .text-wrapper:hover .text-content { border-color: rgba(37, 99, 235, 0.3); }
+        .text-wrapper.active .text-content { border-color: var(--primary); }
+
+        .del-btn {
+            position: absolute; top: -15px; right: -15px;
+            width: 20px; height: 20px; background: #ef4444; color: white;
+            border-radius: 50%; display: none; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 12px; z-index: 101;
+        }
+        .text-wrapper:hover .del-btn, .text-wrapper.active .del-btn { display: flex; }
+        .text-wrapper.editing .del-btn { display: none !important; }
+
+        .control-section { padding: 10px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="group">
+        <h3>1. 图片源</h3>
+        <div class="row">
+            <button class="outline" onclick="document.getElementById('file-input').click()">📂 本地上传</button>
+            <button onclick="saveToPresets()" style="background:#64748b;">💾 存为预设</button>
+        </div>
+        <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleUpload(this)">
+        <div class="preset-grid" id="preset-list"></div>
+    </div>
+
+    <div class="group">
+        <h3>2. 画布设置</h3>
+        <label>画布扩展方向</label>
+        <select id="canvas-pad-mode" onchange="togglePadMode('canvas')">
+            <option value="all">统一调整 (四周)</option>
+            <option value="individual">独立调整 (上下左右)</option>
+        </select>
+
+        <div id="canvas-pad-all" class="control-section">
+            <label>边距: <span id="val-canvas-all">0</span>px</label>
+            <input type="range" min="0" max="200" value="0" oninput="updateCanvasPad('all', this.value)">
+        </div>
+        <div id="canvas-pad-ind" class="control-section" style="display:none">
+            <div class="row"><div class="col"><label>上</label><input type="range" min="0" max="200" value="0" oninput="updateCanvasPad('top', this.value)"></div>
+            <div class="col"><label>下</label><input type="range" min="0" max="200" value="0" oninput="updateCanvasPad('bottom', this.value)"></div></div>
+            <div class="row"><div class="col"><label>左</label><input type="range" min="0" max="200" value="0" oninput="updateCanvasPad('left', this.value)"></div>
+            <div class="col"><label>右</label><input type="range" min="0" max="200" value="0" oninput="updateCanvasPad('right', this.value)"></div></div>
+        </div>
+        
+        <label>画布背景</label>
+        <div class="row">
+            <input type="color" id="canvas-bg" value="#ffffff" oninput="updateCanvasBg()">
+            <select id="bg-type" onchange="updateCanvasBg()">
+                <option value="solid">纯色</option>
+                <option value="v-grad">垂直渐变</option>
+                <option value="h-grad">水平渐变</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="group">
+        <h3>3. 文字编辑 <span id="text-status" style="font-weight:normal; font-size:11px; color:#999">(未选中)</span></h3>
+        <button onclick="addText()">+ 添加文字 (自动选中)</button>
+
+        <div id="text-controls" style="opacity: 0.5; pointer-events: none; transition: 0.2s;">
+            
+            <!-- 字体控制 -->
+            <div class="control-section">
+                <label>字体大小 (支持局部): <span id="fs-val">24</span>px</label>
+                <input type="range" id="font-size" min="12" max="150" value="24" oninput="updateTextSize(this.value)">
+                
+                <div class="row">
+                    <div class="col">
+                        <label>颜色</label>
+                        <input type="color" id="text-color" value="#000000" oninput="execCmd('foreColor', this.value)">
+                    </div>
+                    <div class="col">
+                        <label>样式</label>
+                        <div class="row" style="gap:2px">
+                            <button onclick="execCmd('bold')" class="outline"><b>B</b></button>
+                            <button onclick="execCmd('italic')" class="outline"><i>I</i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 文字背景控制 -->
+            <div class="control-section">
+                <label>背景扩展方向</label>
+                <select id="text-pad-mode" onchange="togglePadMode('text')">
+                    <option value="all">统一调整 (四周)</option>
+                    <option value="individual">独立调整 (上下左右)</option>
+                </select>
+
+                <div id="text-pad-all">
+                    <label>大小: <span id="val-text-bg-all">5</span>px</label>
+                    <input type="range" id="input-bg-all" min="0" max="100" value="5" oninput="updateTextBgPad('all', this.value)">
+                </div>
+
+                <div id="text-pad-ind" style="display:none;">
+                    <div class="row"><div class="col"><label>上</label><input type="range" id="input-bg-top" min="0" max="100" value="5" oninput="updateTextBgPad('top', this.value)"></div>
+                    <div class="col"><label>下</label><input type="range" id="input-bg-bottom" min="0" max="100" value="5" oninput="updateTextBgPad('bottom', this.value)"></div></div>
+                    <div class="row"><div class="col"><label>左</label><input type="range" id="input-bg-left" min="0" max="100" value="5" oninput="updateTextBgPad('left', this.value)"></div>
+                    <div class="col"><label>右</label><input type="range" id="input-bg-right" min="0" max="100" value="5" oninput="updateTextBgPad('right', this.value)"></div></div>
+                </div>
+
+                <div class="row" style="margin-top:10px; border-top:1px dashed #ddd; padding-top:10px;">
+                    <div class="col"><label>背景色</label><input type="color" id="text-bg-color" value="#FFFF00" oninput="updateTextBgColor()"></div>
+                    <div class="col"><label>透明度</label><input type="range" id="text-bg-opacity" min="0" max="100" value="0" oninput="updateTextBgColor()"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div style="margin-top:auto">
+        <button onclick="downloadImg()" style="height:45px; font-size:15px; font-weight:bold">⬇️ 导出图片</button>
+    </div>
+</div>
+
+<div class="workspace">
+    <div id="canvas-box">
+        <div id="img-stage">
+            <img id="main-img" src="https://picsum.photos/id/28/600/400">
+        </div>
+    </div>
+</div>
+
+<script>
+    const imgStage = document.getElementById('img-stage');
+    let activeWrapper = null;
+    // 关键：用于记忆选区的变量
+    let savedRange = null; 
+
+    // ================= 1. 文字添加与交互 =================
+    function addText() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'text-wrapper';
+        
+        const content = document.createElement('div');
+        content.className = 'text-content';
+        content.contentEditable = true;
+        content.spellcheck = false;
+        content.innerText = "双击输入文字";
+        content.style.padding = '5px'; 
+        content.style.backgroundColor = 'rgba(0,0,0,0)'; 
+
+        const delBtn = document.createElement('div');
+        delBtn.className = 'del-btn';
+        delBtn.innerText = '×';
+        delBtn.setAttribute('data-html2canvas-ignore', 'true');
+
+        wrapper.appendChild(content);
+        wrapper.appendChild(delBtn);
+        imgStage.appendChild(wrapper);
+
+        bindTextEvents(wrapper, content, delBtn);
+        activateText(wrapper);
+        
+        setTimeout(() => {
+            content.focus(); 
+            document.execCommand('selectAll', false, null);
+        }, 50);
+    }
+
+    function bindTextEvents(wrapper, content, delBtn) {
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            wrapper.remove();
+            if(activeWrapper === wrapper) { activeWrapper = null; savedRange = null; updateUIState(); }
+        });
+
+        wrapper.addEventListener('mousedown', (e) => {
+            if (e.target === delBtn) return;
+            // 编辑模式下，点击文字不触发拖拽，允许用户调整光标
+            if (wrapper.classList.contains('editing')) { 
+                e.stopPropagation(); 
+                return; 
+            }
+            activateText(wrapper);
+            startDrag(e, wrapper);
+        });
+
+        wrapper.addEventListener('dblclick', () => {
+            wrapper.classList.add('editing');
+            content.focus();
+        });
+
+        content.addEventListener('blur', () => {
+            wrapper.classList.remove('editing');
+            // 这里不立即清除 savedRange，允许用户失焦后立刻去拖滑块
+        });
+
+        // 关键：监听选区变化，保存 Range
+        const saveSelection = () => {
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0 && wrapper.classList.contains('active')) {
+                const range = sel.getRangeAt(0);
+                // 确保选区在当前内容里
+                if (content.contains(range.commonAncestorContainer)) {
+                    savedRange = range.cloneRange();
+                }
+            }
+        };
+        
+        content.addEventListener('mouseup', saveSelection);
+        content.addEventListener('keyup', saveSelection);
+        content.addEventListener('click', () => {
+            saveSelection();
+            syncUI(content);
+        });
+    }
+
+    function activateText(wrapper) {
+        document.querySelectorAll('.text-wrapper').forEach(w => w.classList.remove('active'));
+        activeWrapper = wrapper;
+        wrapper.classList.add('active');
+        updateUIState();
+        syncUI(wrapper.querySelector('.text-content'));
+    }
+
+    function startDrag(e, wrapper) {
+        e.preventDefault(); 
+        let startX = e.clientX, startY = e.clientY;
+        let initialLeft = wrapper.offsetLeft, initialTop = wrapper.offsetTop;
+        wrapper.style.transform = 'translate(-50%, -50%)'; 
+
+        function onMove(ev) {
+            wrapper.style.left = (initialLeft + (ev.clientX - startX)) + 'px';
+            wrapper.style.top = (initialTop + (ev.clientY - startY)) + 'px';
+        }
+        function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    // ================= 2. 修复：基于记忆选区的局部调整 =================
+    
+    function updateTextSize(val) {
+        if(!activeWrapper) return;
+        document.getElementById('fs-val').innerText = val;
+        const content = activeWrapper.querySelector('.text-content');
+
+        // 判断逻辑：如果有保存的选区，且选区不是空的（collapsed）
+        if (savedRange && !savedRange.collapsed) {
+            
+            // 检查我们选中的是否已经是被包裹的 span
+            let container = savedRange.commonAncestorContainer;
+            if (container.nodeType === 3) container = container.parentNode; // 如果是文本节点，取父级
+
+            // 策略：如果当前选中区域的父级是一个 SPAN，且这个 SPAN 在编辑器内
+            // 那么我们认为用户是在持续拖动滑块调整这个 SPAN
+            if (container.tagName === 'SPAN' && content.contains(container) && container !== content) {
+                container.style.fontSize = val + 'px';
+            } else {
+                // 否则，这是一个新的调整动作，需要新建 span 包裹文字
+                const span = document.createElement('span');
+                span.style.fontSize = val + 'px';
+                
+                try {
+                    // 提取内容并包裹
+                    const fragment = savedRange.extractContents();
+                    span.appendChild(fragment);
+                    savedRange.insertNode(span);
+                    
+                    // 关键：更新 savedRange 指向这个新 span 的内部
+                    // 这样下次滑块移动（几毫秒后）就会命中上面的 if 分支，而不是无限嵌套
+                    savedRange.selectNodeContents(span);
+                } catch(e) {
+                    console.log('Complex selection, fallback.');
+                }
+            }
+        } else {
+            // 没有选区，或者选区是空的 -> 调整整体
+            content.style.fontSize = val + 'px';
+        }
+    }
+
+    // ================= 3. 其他保持不变的功能 =================
+    
+    function togglePadMode(target) {
+        const mode = document.getElementById(target + '-pad-mode').value;
+        document.getElementById(target + '-pad-all').style.display = mode === 'all' ? 'block' : 'none';
+        document.getElementById(target + '-pad-ind').style.display = mode === 'individual' ? 'block' : 'none';
+    }
+
+    function updateTextBgColor() {
+        if(!activeWrapper) return;
+        const hex = document.getElementById('text-bg-color').value;
+        const opacity = document.getElementById('text-bg-opacity').value;
+        const content = activeWrapper.querySelector('.text-content');
+        
+        const r = parseInt(hex.slice(1,3), 16);
+        const g = parseInt(hex.slice(3,5), 16);
+        const b = parseInt(hex.slice(5,7), 16);
+        content.style.backgroundColor = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
+    }
+
+    function updateTextBgPad(side, val) {
+        if(!activeWrapper) return;
+        const content = activeWrapper.querySelector('.text-content');
+        val = val + 'px';
+        if (side === 'all') {
+            content.style.padding = val;
+            document.getElementById('val-text-bg-all').innerText = parseInt(val);
+            ['top','right','bottom','left'].forEach(d => document.getElementById('input-bg-'+d).value = parseInt(val));
+        } else {
+            content.style['padding' + capitalize(side)] = val;
+        }
+    }
+
+    function updateCanvasPad(side, val) {
+        const box = document.getElementById('canvas-box');
+        if(side === 'all') {
+            box.style.padding = val + 'px';
+            document.getElementById('val-canvas-all').innerText = val;
+        } else {
+            box.style['padding' + capitalize(side)] = val + 'px';
+        }
+    }
+
+    function updateCanvasBg() {
+        const box = document.getElementById('canvas-box');
+        const color = document.getElementById('canvas-bg').value;
+        const type = document.getElementById('bg-type').value;
+        if(type === 'solid') box.style.background = color;
+        else if(type === 'v-grad') box.style.background = `linear-gradient(to bottom, #fff, ${color})`;
+        else box.style.background = `linear-gradient(to right, #fff, ${color})`;
+    }
+
+    function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    function execCmd(cmd, val) {
+        if(!activeWrapper) return;
+        activeWrapper.querySelector('.text-content').focus();
+        document.execCommand(cmd, false, val);
+    }
+
+    function updateUIState() {
+        const controls = document.getElementById('text-controls');
+        const status = document.getElementById('text-status');
+        if(activeWrapper) {
+            controls.style.opacity = '1';
+            controls.style.pointerEvents = 'auto';
+            status.innerText = "(已选中)";
+            status.style.color = "green";
+        } else {
+            controls.style.opacity = '0.5';
+            controls.style.pointerEvents = 'none';
+            status.innerText = "(未选中)";
+            status.style.color = "#999";
+        }
+    }
+
+    function syncUI(el) {
+        const style = window.getComputedStyle(el);
+        const fs = parseInt(style.fontSize);
+        document.getElementById('font-size').value = fs;
+        document.getElementById('fs-val').innerText = fs;
+        
+        const pad = parseInt(style.paddingTop);
+        document.getElementById('input-bg-all').value = pad;
+        document.getElementById('val-text-bg-all').innerText = pad;
+    }
+
+    const PRESET_KEY = 'presets_v5';
+    function loadPresets() {
+        let list = JSON.parse(localStorage.getItem(PRESET_KEY) || '["https://picsum.photos/id/28/200/200"]');
+        const div = document.getElementById('preset-list');
+        div.innerHTML = '';
+        list.forEach((src,i) => {
+            div.innerHTML += `<div class="preset-item"><img src="${src}" onclick="document.getElementById('main-img').src='${src}'"><div class="preset-del" onclick="delPreset(${i})">×</div></div>`;
+        });
+    }
+    function saveToPresets() {
+        const src = document.getElementById('main-img').src;
+        let list = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
+        if(!list.includes(src)) { list.unshift(src); localStorage.setItem(PRESET_KEY, JSON.stringify(list)); loadPresets(); }
+    }
+    function delPreset(i) {
+        let list = JSON.parse(localStorage.getItem(PRESET_KEY));
+        list.splice(i,1); localStorage.setItem(PRESET_KEY, JSON.stringify(list)); loadPresets();
+    }
+    function handleUpload(inp) {
+        if(inp.files[0]) {
+            const r = new FileReader();
+            r.onload = e => document.getElementById('main-img').src = e.target.result;
+            r.readAsDataURL(inp.files[0]);
+        }
+    }
+    function downloadImg() {
+        // 移除选中状态再截图
+        document.querySelectorAll('.text-wrapper').forEach(w => w.classList.remove('active', 'editing'));
+        // 等一下渲染再截图，确保光标消失
+        setTimeout(() => {
+            html2canvas(document.getElementById('canvas-box'), { scale:2, useCORS:true, backgroundColor:null }).then(c => {
+                const a = document.createElement('a'); a.download = 'image.png'; a.href = c.toDataURL(); a.click();
+            });
+        }, 100);
+    }
+
+    // 点击空白取消选中，并清空记忆选区
+    document.querySelector('.workspace').addEventListener('mousedown', (e) => {
+        if(e.target.id==='canvas-box' || e.target.classList.contains('workspace')) {
+            if(activeWrapper) { 
+                activeWrapper.classList.remove('active','editing'); 
+                activeWrapper = null; 
+                savedRange = null; // 清空记忆
+                updateUIState(); 
+            }
+        }
+    });
+    loadPresets();
+</script>
+</body>
+</html>

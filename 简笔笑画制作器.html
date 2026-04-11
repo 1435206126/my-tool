@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简笔笑画制作器 - V45 修复保存版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root { --primary: #07c160; --warning: #ff9c00; --gray: #f2f2f2; --blue: #1890ff; --dark: #333; --border: #ddd; }
+        * { box-sizing: border-box; outline: none; user-select: none; }
+        body { margin: 0; display: flex; height: 100vh; background: var(--gray); font-family: "Microsoft YaHei", sans-serif; overflow: hidden; }
+
+        /* === 布局 === */
+        .col-left { width: 20%; background: white; border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 20; }
+        .col-center { width: 20%; background: #f9f9f9; border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 10px; }
+        .col-right { width: 60%; background: #e6e6e6; position: relative; display: flex; flex-direction: column; }
+
+        .sidebar-scroll { flex: 1; overflow-y: auto; padding: 15px; }
+        .panel { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        h4 { margin: 0 0 10px 0; font-size: 14px; border-left: 3px solid var(--primary); padding-left: 8px; color: #333; }
+
+        /* 角色按钮与缩略图 */
+        .role-btn-large {
+            width: 100%; height: 50px; border: 2px dashed var(--primary); background: #f0f9f0;
+            color: var(--primary); font-size: 14px; font-weight: bold; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 6px;
+        }
+        .mini-role-list { 
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 8px; 
+        }
+        .mini-role-wrapper { 
+            width: 100%; aspect-ratio: 1; border: 1px solid transparent; 
+            background: #eee; cursor: pointer; position: relative;
+        }
+        .mini-role-wrapper:hover { border-color: var(--primary); }
+        .mini-role-wrapper img { 
+            width: 100%; height: 100%; object-fit: cover; border-radius: 0;
+        }
+        .mini-role-number { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.5); color: white; font-size: 10px; padding: 2px 5px;
+            border-radius: 4px; z-index: 1; pointer-events: none;
+        }
+
+        /* 素材库 */
+        .lib-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; min-height: 50px;}
+        .lib-item { aspect-ratio: 1; background: #eee; cursor: pointer; border: 1px solid transparent; position: relative; }
+        .lib-item:hover { border-color: var(--primary); }
+        .lib-item img { width: 100%; height: 100%; object-fit: cover; }
+        .lib-del { position: absolute; top: 0; right: 0; background: rgba(0,0,0,0.6); color: white; width: 12px; height: 12px; font-size: 8px; display: none; text-align: center; line-height: 12px;}
+        .lib-item:hover .lib-del { display: block; }
+
+        /* 输入区 */
+        #scriptInput { 
+            flex: 1; width: 100%; resize: none; border: 1px solid #ddd; padding: 10px; 
+            font-size: 14px; line-height: 1.6; border-radius: 4px; margin-bottom: 10px;
+            font-family: monospace; user-select: text; 
+        }
+
+        /* 画布区 */
+        .canvas-scroll { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #canvas { background: white; width: 100%; max-width: 800px; box-shadow: 0 0 20px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+
+        /* 行样式 */
+        .row { 
+            position: relative; width: 100%; 
+            height: 450px; 
+            background: white; border-bottom: 1px dashed #eee; 
+            flex-shrink: 0; overflow: hidden; 
+            transition: box-shadow 0.2s;
+        }
+        .row.active-row { outline: 2px solid var(--blue); z-index: 10; }
+        
+        .crop-panel {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 30px;
+            background: rgba(0,0,0,0.8); display: none; z-index: 200;
+            align-items: center; padding: 0 10px; gap: 10px; color: white; font-size: 12px;
+        }
+        .row.show-crop .crop-panel { display: flex; }
+        .crop-slider { flex: 1; cursor: pointer; }
+
+        /* 工具栏 */
+        .tools { position: absolute; top: 5px; right: 5px; display: flex; opacity: 0; z-index: 100; background: rgba(0,0,0,0.6); border-radius: 4px; padding: 2px; }
+        .row:hover .tools { opacity: 1; }
+        .tool-btn { 
+            width: 24px; height: 24px; border: none; background: transparent; color: white; 
+            cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; margin: 0 1px;
+        }
+        .tool-btn:hover { background: rgba(255,255,255,0.3); }
+        .tool-btn.btn-plus { color: #52c41a; font-weight: bold; font-size: 16px; }
+
+        /* 图片/角色容器 */
+        .img-wrapper-inner { position: absolute; display: inline-block; line-height: 0; cursor: grab; transform-origin: 0 0; }
+        .img-wrapper-inner:active { cursor: grabbing; }
+        .img-layer { pointer-events: none; width: 100%; height: 100%; object-fit: contain; }
+        .img-wrapper-inner.editing { outline: 2px dashed var(--blue); z-index: 90; }
+        
+        .resize-handle {
+            position: absolute; width: 10px; height: 10px; background: white; border: 1px solid var(--blue);
+            border-radius: 50%; z-index: 95; display: none;
+        }
+        .img-wrapper-inner.editing .resize-handle { display: block; }
+        .rh-nw { top: -5px; left: -5px; cursor: nw-resize; }
+        .rh-ne { top: -5px; right: -5px; cursor: ne-resize; }
+        .rh-sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+        .rh-se { bottom: -5px; right: -5px; cursor: se-resize; }
+
+        /* 翻转按钮 */
+        .flip-btn {
+            position: absolute; top: -10px; right: -10px; width: 20px; height: 20px;
+            background: var(--blue); color: white; border-radius: 50%; text-align: center;
+            line-height: 20px; cursor: pointer; display: none; font-size: 12px; z-index: 96;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .img-wrapper-inner.editing .flip-btn { display: block; }
+
+
+        /* 文字容器 */
+        .text-box-container {
+            position: absolute; z-index: 50; cursor: move; padding: 4px;
+            border: 1px dashed transparent; border-radius: 4px; width: max-content; max-width: 90%;
+            transform-origin: 0 0; 
+        }
+        .text-box-container.active { outline: 1px solid var(--blue); }
+        .text-line { position: relative; padding: 0 5px; min-height: 20px; display: block; width: fit-content; margin: 0 auto;}
+        .line-content { outline: none; display: inline-block; white-space: pre-wrap; cursor: text; user-select: text; }
+        
+        .text-scale-handle {
+            position: absolute; bottom: -6px; right: -6px; width: 12px; height: 12px;
+            background: var(--blue); border: 2px solid white; border-radius: 50%;
+            cursor: se-resize; display: none; z-index: 101; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .text-box-container.active .text-scale-handle { display: block; }
+        .text-del-btn {
+            position: absolute; top: -8px; left: -8px; width: 16px; height: 16px; 
+            background: #fa5151; color: white; border-radius: 50%; text-align: center; 
+            line-height: 14px; cursor: pointer; display: none; font-size: 12px; z-index: 60;
+        }
+        .text-box-container.active .text-del-btn { display: block; }
+
+        .btn { width: 100%; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; background: #e6e6e6; font-weight: bold; margin-bottom: 5px;}
+        .btn:hover { background: #d9d9d9; }
+        .btn-green { background: var(--primary); color: white; } .btn-green:hover { background: #06ad56; }
+        .btn-blue { background: var(--blue); color: white; } .btn-blue:hover { background: #096dd9; }
+        .btn-red { background: #ff4d4f; color: white; } .btn-red:hover { background: #ff7875; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 999; display: none; justify-content: center; align-items: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-content { background: white; width: 90%; max-width: 900px; max-height: 90vh; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; }
+        .role-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; overflow-y: auto; padding: 10px; flex: 1; }
+        .role-slot { aspect-ratio: 1; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; position: relative; background: #eee; }
+        .role-slot img { width: 100%; height: 100%; object-fit: cover; display: none; border-radius: 3px; }
+        .role-slot.has-img img { display: block; }
+        .role-num { position: absolute; bottom: 2px; right: 2px; background: rgba(0,0,0,0.5); color: white; font-size: 10px; padding: 1px 4px; border-radius: 2px; }
+
+        .control-row { display: flex; align-items: center; margin-bottom: 8px; gap: 8px; font-size: 12px; color: #666; }
+        select, input[type=color], input[type=range] { flex: 1; height: 26px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+<div class="col-left">
+    <div class="sidebar-scroll">
+        <div class="panel">
+            <h4>🎭 角色管理 (1-30)</h4>
+            <div class="role-btn-large" onclick="openRoleModal()">
+                <span>+</span> 点击设置角色
+            </div>
+            <div class="mini-role-list" id="miniRolePreview"></div>
+        </div>
+
+        <div class="panel">
+            <h4>🖼️ 素材库 (点击叠加)</h4>
+            <div class="lib-grid" id="libGrid"></div>
+            <label class="btn btn-green" style="margin-top:8px; display:block; text-align:center;">
+                + 批量上传素材
+                <input type="file" id="uploadImg" accept="image/*" multiple style="display:none">
+            </label>
+        </div>
+
+        <div class="panel">
+            <h4>🎨 样式设置</h4>
+            <div class="control-row">
+                <label>字体</label>
+                <select id="fontSelect" onchange="updateGlobalFont()">
+                    <option value="Microsoft YaHei">微软雅黑</option>
+                    <option value="SimHei">黑体</option>
+                    <option value="Arial">Arial</option>
+                </select>
+            </div>
+            <label class="btn" style="text-align:center; padding:4px;">
+                📂 上传字体 (TTF/OTF)
+                <input type="file" id="uploadFont" accept=".ttf,.otf" style="display:none">
+            </label>
+            <div class="control-row"><label>行距</label><input type="range" id="lineHeightRange" min="0.8" max="2.5" step="0.1" value="1.2" oninput="updateLineHeight(this.value)"></div>
+            <div class="control-row"><label>字色</label><input type="color" id="fontColor" value="#000000" oninput="applyColor(this.value)"></div>
+            <div class="control-row"><label>背景</label><input type="color" id="bgColor" value="#ffffff" oninput="applyBackground()"><input type="range" id="bgOpacity" min="0" max="1" step="0.1" value="0" style="width:40px" oninput="applyBackground()"></div>
+            <div class="control-row"><button class="btn" onclick="applyBold()">B 加粗</button></div>
+        </div>
+    </div>
+</div>
+
+<div class="col-center">
+    <h3>📝 剧本编辑</h3>
+    <textarea id="scriptInput" placeholder="请输入剧本...
+1: 你好
+2: 你好
+0: 旁白
+这里是没有角色的文字，会自动归到上面一行
+"></textarea>
+    <div style="display:flex; gap:10px; margin-top:auto;">
+        <button class="btn btn-blue" onclick="generateFromScript()">🚀 一键生成长图</button>
+    </div>
+</div>
+
+<div class="col-right">
+    <div class="canvas-scroll" id="scrollArea">
+        <div id="canvas"></div>
+    </div>
+    <div style="padding: 10px; background: #ddd; text-align: center; display: flex; gap: 10px; justify-content: center;">
+        <button class="btn btn-red" style="width: 150px; font-size: 16px;" onclick="clearCanvasOnly()">🗑️ 清空预览</button>
+        <button class="btn btn-blue" style="width: 200px; font-size: 16px;" onclick="saveLongImage()">💾 保存长图</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="roleModal" onclick="if(event.target===this) closeRoleModal()">
+    <div class="modal-content">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-weight:bold;">
+            <span>设置角色 (点击格子上传)</span>
+            <button class="btn btn-red" style="width:auto; padding:5px 15px;" onclick="closeRoleModal()">关闭</button>
+        </div>
+        <div class="role-grid" id="roleGrid"></div>
+        <input type="file" id="roleUpload" accept="image/*" style="display:none">
+    </div>
+</div>
+
+<script>
+    const DB_NAME = "ScriptMakerDB_V45";
+    const FONT_STORAGE_KEY = "lastSelectedFont"; 
+    let db = null;
+    let GLOBAL_DEFAULT_FONT = 'Microsoft YaHei';
+    let currentActiveRow = null;
+    let currentTextContainer = null;
+    let undoStack = []; 
+
+    function initDB() {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = e => {
+            db = e.target.result;
+            if(!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'id', autoIncrement:true });
+            if(!db.objectStoreNames.contains('roles')) db.createObjectStore('roles', { keyPath: 'id' });
+            if(!db.objectStoreNames.contains('fonts')) db.createObjectStore('fonts', { keyPath: 'name' });
+        };
+        req.onsuccess = e => { 
+            db = e.target.result; 
+            loadLibImages(); 
+            renderRoleGrid(); 
+            loadFonts().then(() => {
+                const savedFont = localStorage.getItem(FONT_STORAGE_KEY);
+                const fontSelect = document.getElementById('fontSelect');
+                if (savedFont && [...fontSelect.options].some(option => option.value === savedFont)) {
+                    fontSelect.value = savedFont;
+                    GLOBAL_DEFAULT_FONT = savedFont;
+                } else {
+                    // 如果字体不存在，保持默认
+                    GLOBAL_DEFAULT_FONT = fontSelect.value;
+                }
+            });
+        };
+        req.onerror = e => {
+            console.error("IndexedDB error:", e.target.errorCode);
+            alert("数据库初始化失败，部分功能可能无法使用。");
+        };
+    }
+
+    // === 撤销 ===
+    function saveState() {
+        if(undoStack.length > 30) undoStack.shift();
+        undoStack.push(document.getElementById('canvas').innerHTML);
+    }
+    function undo() {
+        if (document.activeElement === document.getElementById('scriptInput')) return;
+        if (undoStack.length > 0) {
+            document.getElementById('canvas').innerHTML = undoStack.pop();
+            rebindAllEvents();
+        }
+    }
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            if (document.activeElement !== document.getElementById('scriptInput')) {
+                e.preventDefault(); undo();
+            }
+        }
+    });
+
+    function rebindAllEvents() {
+        document.querySelectorAll('.row').forEach(row => { row.onclick = (e) => setActiveRow(row, e); });
+        document.querySelectorAll('.img-wrapper-inner').forEach(el => makeDraggableAndResizable(el));
+        document.querySelectorAll('.text-box-container').forEach(el => {
+            bindContainerEvents(el);
+            el.querySelectorAll('.text-line').forEach(l => bindLineEvents(l));
+        });
+    }
+
+    // === 角色 ===
+    let currentRoleSlotId = null;
+    function openRoleModal() { document.getElementById('roleModal').classList.add('open'); renderRoleGrid(); }
+    function closeRoleModal() { document.getElementById('roleModal').classList.remove('open'); }
+    function renderRoleGrid() {
+        const grid = document.getElementById('roleGrid');
+        const preview = document.getElementById('miniRolePreview');
+        grid.innerHTML = ''; preview.innerHTML = '';
+        if(!db) return;
+        db.transaction('roles', 'readonly').objectStore('roles').getAll().onsuccess = e => {
+            const map = {}; e.target.result.forEach(i => map[i.id] = i.data);
+            for(let i=1; i<=30; i++) {
+                const div = document.createElement('div');
+                div.className = 'role-slot' + (map[i] ? ' has-img' : '');
+                div.innerHTML = `<span class="role-num">${i}</span><img src="${map[i] || ''}">`;
+                div.onclick = () => { currentRoleSlotId = i; document.getElementById('roleUpload').click(); };
+                grid.appendChild(div);
+
+                if(map[i]) {
+                    const wrapper = document.createElement('div'); 
+                    wrapper.className = 'mini-role-wrapper'; 
+                    wrapper.innerHTML = `<img src="${map[i]}"><span class="mini-role-number">${i}</span>`;
+                    wrapper.onclick = () => handleLibraryClick(map[i]);
+                    preview.appendChild(wrapper);
+                }
+            }
+        };
+    }
+    document.getElementById('roleUpload').onchange = function(e) {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            const tx = db.transaction('roles', 'readwrite');
+            tx.objectStore('roles').put({ id: currentRoleSlotId, data: ev.target.result });
+            tx.oncomplete = () => { renderRoleGrid(); this.value = ''; };
+        };
+        reader.readAsDataURL(file);
+    };
+
+    // === 素材库 ===
+    document.getElementById('uploadImg').onchange = function(e) {
+        const files = Array.from(e.target.files); if(!files.length) return;
+        const promises = files.map(f => new Promise(res => { const r = new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f); }));
+        Promise.all(promises).then(urls => {
+            const tx = db.transaction('images', 'readwrite');
+            urls.forEach(u => tx.objectStore('images').add({ data: u }));
+            tx.oncomplete = () => { loadLibImages(); this.value = ''; };
+        });
+    };
+    function loadLibImages() {
+        if(!db) return;
+        const grid = document.getElementById('libGrid'); grid.innerHTML = '';
+        db.transaction('images', 'readonly').objectStore('images').getAll().onsuccess = e => {
+            e.target.result.forEach(item => {
+                const div = document.createElement('div'); div.className = 'lib-item';
+                div.innerHTML = `<img src="${item.data}"><div class="lib-del" onclick="delLibImg(${item.id}, event)">❌</div>`;
+                div.onclick = (ev) => { if(ev.target.className!=='lib-del') handleLibraryClick(item.data); };
+                grid.appendChild(div);
+            });
+        };
+    }
+    window.delLibImg = (id, e) => { e.stopPropagation(); if(confirm('删除?')) db.transaction('images','readwrite').objectStore('images').delete(id).onsuccess = loadLibImages; }
+
+    // === 剧本生成核心逻辑 (大幅修改) ===
+    async function generateFromScript() {
+        saveState();
+        const text = document.getElementById('scriptInput').value;
+        if(!text.trim()) { alert("请输入剧本"); return; }
+        document.getElementById('canvas').innerHTML = ''; // 清空画布
+        
+        const lines = text.split('\n');
+        let lastRowDiv = null;
+        let lastTextBox = null;
+
+        for (let line of lines) {
+            line = line.trim(); 
+            if(!line) continue;
+            
+            const match = line.match(/^(\d+)[:：](.*)/);
+            if(match) {
+                // === 新角色行 ===
+                const roleId = parseInt(match[1]);
+                let content = match[2].trim();
+                let color = null;
+                const cm = content.match(/(.*)#(.+)#$/); if(cm) { content = cm[1]; color = cm[2]==='red'?'#ff0000':cm[2]; }
+                
+                let imgData = null;
+                if(roleId > 0) imgData = await getRoleImage(roleId);
+
+                // 创建新行
+                const div = document.createElement('div');
+                div.className = 'row';
+                div.onclick = (e) => setActiveRow(div, e);
+                div.innerHTML = getRowToolsHtml();
+                document.getElementById('canvas').appendChild(div);
+                lastRowDiv = div;
+
+                // 布局逻辑：单数(奇数)左图右文，双数(偶数)右图左文
+                const isOdd = (roleId % 2 !== 0); 
+                const canvasWidth = 800; // 假设画布宽度，或者动态获取
+                
+                // 1. 添加图片 (100%高度)
+                if(imgData) {
+                    // 预加载图片以获取宽高比
+                    await new Promise(resolve => {
+                        const i = new Image();
+                        i.onload = () => {
+                            const ratio = i.naturalWidth / i.naturalHeight;
+                            const rowHeight = 450;
+                            const targetWidth = rowHeight * ratio;
+                            
+                            const wrap = document.createElement('div');
+                            wrap.className = 'img-wrapper-inner';
+                            // 设置固定尺寸
+                            wrap.style.height = '450px';
+                            wrap.style.width = targetWidth + 'px';
+                            wrap.style.top = '0px';
+                            
+                            // 位置逻辑
+                            if(isOdd) {
+                                // 左对齐
+                                wrap.style.left = '0px';
+                                wrap.style.transform = 'translate(0, 0) scale(1)';
+                            } else {
+                                // 右对齐 (计算transform X)
+                                // 因为 DOM 默认是 left:0，我们通过 transform 移动到右边
+                                const transX = canvasWidth - targetWidth;
+                                wrap.style.left = '0px';
+                                wrap.style.transform = `translate(${transX}px, 0) scale(1)`;
+                            }
+
+                            wrap.innerHTML = `<img src="${imgData}" class="img-layer"><div class="resize-handle rh-se"></div><div class="resize-handle rh-sw"></div><div class="resize-handle rh-ne"></div><div class="resize-handle rh-nw"></div><div class="flip-btn" onclick="flipImage(this, event)">⇄</div>`;
+                            div.appendChild(wrap);
+                            makeDraggableAndResizable(wrap);
+                            resolve();
+                        };
+                        i.src = imgData;
+                    });
+                }
+
+                // 2. 添加文字
+                const txtDiv = document.createElement('div');
+                txtDiv.className = 'text-box-container';
+                txtDiv.style.fontFamily = GLOBAL_DEFAULT_FONT;
+                txtDiv.style.color = color || '#000000';
+                txtDiv.style.top = '50%';
+                
+                if(roleId === 0) {
+                    // 旁白居中
+                    txtDiv.style.left = '50%'; 
+                    txtDiv.style.transform = 'translate(-50%, -50%)';
+                } else {
+                    if(isOdd) {
+                        // 单数：图左，文右
+                        txtDiv.style.right = '5%';
+                        txtDiv.style.left = 'auto'; // 清除left
+                        txtDiv.style.transform = 'translate(0, -50%)'; // 仅垂直居中
+                    } else {
+                        // 双数：图右，文左
+                        txtDiv.style.left = '5%';
+                        txtDiv.style.right = 'auto';
+                        txtDiv.style.transform = 'translate(0, -50%)';
+                    }
+                }
+
+                txtDiv.innerHTML = `<div class="text-del-btn">×</div><div class="text-scale-handle"></div>${createLineHtml(content, 50)}`;
+                div.appendChild(txtDiv);
+                bindContainerEvents(txtDiv);
+                txtDiv.querySelectorAll('.text-line').forEach(l => bindLineEvents(l));
+                lastTextBox = txtDiv;
+
+            } else {
+                // === 没有角色的行，追加文字 ===
+                if (lastTextBox) {
+                    // 追加到上一个文本框
+                    const d = document.createElement('div'); 
+                    d.innerHTML = createLineHtml(line, 50);
+                    lastTextBox.appendChild(d.firstElementChild);
+                    bindLineEvents(lastTextBox.lastElementChild);
+                } else {
+                    // 如果第一行就没有角色，创建一个默认旁白行
+                    addRow({ roleId:0, text: line });
+                    lastRowDiv = document.getElementById('canvas').lastElementChild;
+                    lastTextBox = lastRowDiv.querySelector('.text-box-container');
+                }
+            }
+        }
+    }
+    
+    function getRoleImage(id) { return new Promise(res => db.transaction('roles','readonly').objectStore('roles').get(id).onsuccess = e => res(e.target.result?.data)); }
+
+    function getRowToolsHtml() {
+        return `
+            <div class="tools">
+                <button class="tool-btn btn-plus" onclick="insertBlankRow(this)" title="插入空白行">+</button>
+                <button class="tool-btn" onclick="toggleCrop(this)" title="裁剪高度">✂️</button>
+                <button class="tool-btn btn-text" onclick="addTextToRow(this)" title="添加文字">T</button>
+                <button class="tool-btn del" onclick="deleteRow(this)" title="删除">×</button>
+            </div>
+            <div class="crop-panel" onclick="event.stopPropagation()">
+                <span>高度:</span>
+                <input type="range" class="crop-slider" min="100" max="1000" step="10" value="450" oninput="applyRowHeight(this)">
+                <button class="tool-btn" onclick="this.closest('.row').classList.remove('show-crop')">✅</button>
+            </div>
+        `;
+    }
+
+    // === 手动添加行 (点击+号等) ===
+    function addRow(params, insertAfterNode = null) {
+        const { roleId, image, text, textColor } = params;
+        const div = document.createElement('div');
+        div.className = 'row';
+        div.onclick = (e) => setActiveRow(div, e);
+        div.innerHTML = getRowToolsHtml();
+
+        if (image) { 
+            const wrap = document.createElement('div'); 
+            wrap.className = 'img-wrapper-inner';
+            wrap.style.width='30%'; 
+            wrap.style.top='50%'; 
+            wrap.style.left='50%'; 
+            wrap.style.transform='translate(-50%,-50%) scaleX(1) scaleY(1)'; 
+            wrap.innerHTML = `<img src="${image}" class="img-layer"><div class="resize-handle rh-se"></div><div class="resize-handle rh-sw"></div><div class="resize-handle rh-ne"></div><div class="resize-handle rh-nw"></div><div class="flip-btn" onclick="flipImage(this, event)">⇄</div>`; 
+            div.appendChild(wrap);
+            makeDraggableAndResizable(wrap);
+        }
+
+        if (text || roleId===0) {
+            if(roleId !== 0 || text) {
+                const txtDiv = document.createElement('div');
+                txtDiv.className = 'text-box-container';
+                txtDiv.style.fontFamily = GLOBAL_DEFAULT_FONT;
+                txtDiv.style.color = textColor || '#000000';
+                txtDiv.style.top = '50%'; 
+                txtDiv.style.left = '50%'; txtDiv.style.transform = 'translate(-50%, -50%)';
+                
+                txtDiv.innerHTML = `<div class="text-del-btn">×</div><div class="text-scale-handle"></div>${createLineHtml(text, 50)}`;
+                div.appendChild(txtDiv);
+                bindContainerEvents(txtDiv);
+                txtDiv.querySelectorAll('.text-line').forEach(l => bindLineEvents(l));
+            }
+        }
+
+        const canvas = document.getElementById('canvas');
+        if(insertAfterNode && insertAfterNode.nextSibling) canvas.insertBefore(div, insertAfterNode.nextSibling);
+        else canvas.appendChild(div);
+        if(!insertAfterNode) { div.scrollIntoView({ behavior: 'smooth', block: 'end' }); setActiveRow(div); }
+    }
+
+    // === 裁剪 ===
+    window.toggleCrop = function(btn) {
+        saveState();
+        const row = btn.closest('.row');
+        row.classList.toggle('show-crop');
+        const slider = row.querySelector('.crop-slider');
+        slider.value = row.offsetHeight;
+    }
+    window.applyRowHeight = function(input) { input.closest('.row').style.height = input.value + 'px'; }
+    window.insertBlankRow = function(btn) { saveState(); addRow({ roleId: 0, text: '' }, btn.closest('.row')); }
+    window.deleteRow = function(btn) { saveState(); btn.closest('.row').remove(); }
+
+    // === 字体 ===
+    document.getElementById('uploadFont').onchange = function(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const fontName = file.name.split('.')[0].replace(/\s/g, '');
+                const font = new FontFace(fontName, ev.target.result);
+                font.load().then(loadedFont => {
+                    document.fonts.add(loadedFont);
+                    const sel = document.getElementById('fontSelect');
+                    const opt = document.createElement('option');
+                    opt.value = fontName; opt.text = "自定义: " + fontName;
+                    sel.add(opt); sel.value = fontName;
+                    updateGlobalFont();
+                    const tx = db.transaction('fonts', 'readwrite');
+                    tx.objectStore('fonts').put({ name: fontName, buffer: ev.target.result });
+                    alert(`字体 ${fontName} 已设置为默认字体`);
+                }).catch(err => alert("字体文件无法解析"));
+            } catch(e) { console.error(e); }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+    
+    function loadFonts() {
+        return new Promise(resolve => {
+            if(!db) { resolve(); return; }
+            const fontSelect = document.getElementById('fontSelect');
+            db.transaction('fonts', 'readonly').objectStore('fonts').getAll().onsuccess = e => {
+                const fontPromises = e.target.result.map(f => {
+                    return new Promise((fontResolve) => {
+                        const ff = new FontFace(f.name, f.buffer);
+                        ff.load().then(lf => {
+                            document.fonts.add(lf);
+                            const opt = document.createElement('option'); opt.value = f.name; opt.text = "自定义: "+f.name;
+                            fontSelect.add(opt);
+                            fontResolve();
+                        }).catch(err => {
+                            console.error(`Error loading font ${f.name}:`, err);
+                            fontResolve(); 
+                        });
+                    });
+                });
+                Promise.all(fontPromises).then(resolve);
+            };
+            db.transaction('fonts', 'readonly').objectStore('fonts').count().onsuccess = e => {
+                if (e.target.result === 0) resolve();
+            }
+        });
+    }
+
+    // === 文字容器交互 (修复蓝点跳动) ===
+    function bindContainerEvents(container) {
+        const delBtn = container.querySelector('.text-del-btn');
+        if(delBtn) delBtn.onclick = e => { e.stopPropagation(); saveState(); container.remove(); };
+
+        const scaleHandle = container.querySelector('.text-scale-handle');
+        if(scaleHandle) {
+            scaleHandle.onmousedown = function(e) {
+                e.stopPropagation(); e.preventDefault(); saveState();
+                const startY = e.clientY;
+                const style = window.getComputedStyle(container);
+                const matrix = new DOMMatrix(style.transform);
+                const startScale = matrix.a; 
+                // 关键修复：保存当前的位移
+                const currentTx = matrix.e;
+                const currentTy = matrix.f;
+
+                const onMove = ev => {
+                    const delta = (ev.clientY - startY) * 0.005;
+                    const newScale = Math.max(0.2, startScale + delta);
+                    // 关键修复：同时应用位移和缩放
+                    container.style.transform = `translate(${currentTx}px, ${currentTy}px) scale(${newScale})`;
+                };
+                const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+            }
+        }
+
+        container.onmousedown = function(e) {
+            if(e.target.isContentEditable || e.target.classList.contains('text-scale-handle') || e.target.classList.contains('text-del-btn')) return;
+            e.stopPropagation(); 
+            if(currentTextContainer) currentTextContainer.classList.remove('active');
+            currentTextContainer = container; container.classList.add('active');
+            saveState();
+
+            const style = window.getComputedStyle(container);
+            const matrix = new DOMMatrix(style.transform);
+            
+            let startTx = matrix.e || 0;
+            let startTy = matrix.f || 0;
+            let startScale = matrix.a; // 保持缩放
+
+            const startX = e.clientX;
+            const startY = e.clientY;
+
+            const onMove = ev => {
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+                container.style.transform = `translate(${startTx + dx}px, ${startTy + dy}px) scale(${startScale})`;
+            };
+            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+            window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+        };
+    }
+
+    // === 文字行逻辑 ===
+    function createLineHtml(text, size) {
+        const display = text || "双击编辑文字";
+        return `<div class="text-line"><span class="line-content" contenteditable="false" style="font-size: ${size}px;">${display}</span></div>`;
+    }
+    
+    function bindLineEvents(line) {
+        const span = line.querySelector('.line-content');
+        
+        span.ondblclick = function(e) {
+            e.stopPropagation();
+            if(this.innerText === "双击编辑文字") this.innerText = "";
+            this.contentEditable = true; this.focus();
+        };
+        span.onblur = function() { this.contentEditable = false; if(!this.innerText.trim()) this.innerText="双击编辑文字"; };
+        
+        span.onwheel = function(e) {
+            const container = this.closest('.text-box-container');
+            if (!container || !container.classList.contains('active')) return;
+            e.preventDefault(); e.stopPropagation();
+            let s = parseFloat(window.getComputedStyle(this).fontSize);
+            const delta = e.deltaY < 0 ? 2 : -2;
+            const newSize = Math.max(12, s + delta);
+            this.style.fontSize = newSize + 'px';
+        };
+
+        span.onkeydown = function(e) {
+            if(e.key === 'Enter') {
+                e.preventDefault(); saveState();
+                const selection = window.getSelection(); const range = selection.getRangeAt(0);
+                const fullText = this.innerText; const caretPos = range.startOffset;
+                const textBefore = fullText.substring(0, caretPos); const textAfter = fullText.substring(caretPos);
+                this.innerText = textBefore;
+                const currentSize = parseFloat(window.getComputedStyle(this).fontSize);
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = createLineHtml(textAfter, currentSize);
+                const newLineElement = tempDiv.firstElementChild;
+                line.insertAdjacentElement('afterend', newLineElement);
+                bindLineEvents(newLineElement);
+                const newSpan = newLineElement.querySelector('.line-content');
+                newSpan.contentEditable = true; newSpan.focus();
+            }
+            if(e.key === 'Backspace') {
+                const selection = window.getSelection(); const range = selection.getRangeAt(0);
+                if(range.startOffset === 0 && selection.isCollapsed) {
+                    const prevLine = line.previousElementSibling;
+                    if(prevLine && prevLine.classList.contains('text-line')) {
+                        e.preventDefault(); saveState();
+                        const prevSpan = prevLine.querySelector('.line-content');
+                        const currentText = this.innerText;
+                        const originalLength = prevSpan.innerText.length;
+                        if(currentText !== "双击编辑文字") {
+                            if(prevSpan.innerText === "双击编辑文字") prevSpan.innerText = "";
+                            prevSpan.innerText += currentText;
+                        }
+                        line.remove();
+                        prevSpan.contentEditable = true; prevSpan.focus();
+                        try {
+                            const newRange = document.createRange(); const sel = window.getSelection();
+                            newRange.setStart(prevSpan.firstChild || prevSpan, originalLength);
+                            newRange.collapse(true); sel.removeAllRanges(); sel.addRange(newRange);
+                        } catch(err) {}
+                    }
+                }
+            }
+        };
+    }
+
+    // === 图片/角色交互 ===
+    function makeDraggableAndResizable(el) {
+        el.onwheel = function(e) {
+            if(!el.classList.contains('editing')) return;
+            e.preventDefault(); e.stopPropagation();
+            const delta = e.deltaY < 0 ? 10 : -10;
+            const currentTransform = window.getComputedStyle(el).transform;
+            const matrix = new DOMMatrix(currentTransform);
+            let currentScaleX = matrix.a;
+            let currentScaleY = matrix.d;
+            const originalWidth = el.offsetWidth / Math.abs(currentScaleX);
+            const originalHeight = el.offsetHeight / Math.abs(currentScaleY);
+            const ratio = originalWidth / originalHeight;
+            let newWidth = Math.max(20, el.offsetWidth + delta);
+            el.style.width = newWidth + 'px';
+            el.style.height = (newWidth / ratio) + 'px';
+            const newScaleAbsX = newWidth / originalWidth;
+            const newScaleAbsY = (newWidth / ratio) / originalHeight;
+            el.style.transform = `translateX(${matrix.e}px) translateY(${matrix.f}px) scaleX(${Math.sign(currentScaleX) * newScaleAbsX}) scaleY(${Math.sign(currentScaleY) * newScaleAbsY})`;
+        };
+
+        el.onmousedown = function(e) {
+            if(e.target.classList.contains('resize-handle') || e.target.classList.contains('flip-btn')) return; 
+            e.stopPropagation(); e.preventDefault(); saveState();
+            
+            document.querySelectorAll('.editing').forEach(x => x.classList.remove('editing'));
+            el.classList.add('editing');
+
+            const style = window.getComputedStyle(el);
+            const matrix = new DOMMatrix(style.transform);
+            
+            let startTx = matrix.e || 0;
+            let startTy = matrix.f || 0;
+            let currentScaleX = matrix.a;
+            let currentScaleY = matrix.d;
+
+            const startX = e.clientX;
+            const startY = e.clientY;
+
+            const onMove = ev => {
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+                el.style.transform = `translateX(${startTx + dx}px) translateY(${startTy + dy}px) scaleX(${currentScaleX}) scaleY(${currentScaleY})`;
+            };
+            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+            window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+        };
+
+        el.querySelectorAll('.resize-handle').forEach(h => {
+            h.onmousedown = function(e) {
+                e.stopPropagation(); e.preventDefault(); saveState();
+                const startX = e.clientX;
+                const startY = e.clientY; 
+                const imgWrapper = h.closest('.img-wrapper-inner');
+                const startRenderW = imgWrapper.offsetWidth;
+                const startRenderH = imgWrapper.offsetHeight;
+                const currentTransform = window.getComputedStyle(imgWrapper).transform;
+                const matrix = new DOMMatrix(currentTransform);
+                let currentScaleX = matrix.a;
+                let currentScaleY = matrix.d;
+                let currentTx = matrix.e;
+                let currentTy = matrix.f;
+                
+                const originalWidth = startRenderW / Math.abs(currentScaleX);
+                const originalHeight = startRenderH / Math.abs(currentScaleY);
+                const ratio = originalWidth / originalHeight;
+
+                const onMove = ev => {
+                    const dx = ev.clientX - startX;
+                    // const dy = ev.clientY - startY;
+
+                    let newRenderW, newRenderH;
+
+                    if (h.classList.contains('rh-nw')) { 
+                        newRenderW = Math.max(20, startRenderW - dx);
+                        newRenderH = newRenderW / ratio;
+                        imgWrapper.style.transform = `translateX(${currentTx + startRenderW - newRenderW}px) translateY(${currentTy + startRenderH - newRenderH}px) scaleX(${Math.sign(currentScaleX) * (newRenderW / originalWidth)}) scaleY(${Math.sign(currentScaleY) * (newRenderH / originalHeight)})`;
+                    } else if (h.classList.contains('rh-ne')) { 
+                        newRenderW = Math.max(20, startRenderW + dx);
+                        newRenderH = newRenderW / ratio;
+                        imgWrapper.style.transform = `translateX(${currentTx}px) translateY(${currentTy + startRenderH - newRenderH}px) scaleX(${Math.sign(currentScaleX) * (newRenderW / originalWidth)}) scaleY(${Math.sign(currentScaleY) * (newRenderH / originalHeight)})`;
+                    } else if (h.classList.contains('rh-sw')) { 
+                        newRenderW = Math.max(20, startRenderW - dx);
+                        newRenderH = newRenderW / ratio;
+                        imgWrapper.style.transform = `translateX(${currentTx + startRenderW - newRenderW}px) translateY(${currentTy}px) scaleX(${Math.sign(currentScaleX) * (newRenderW / originalWidth)}) scaleY(${Math.sign(currentScaleY) * (newRenderH / originalHeight)})`;
+                    } else { 
+                        newRenderW = Math.max(20, startRenderW + dx);
+                        newRenderH = newRenderW / ratio;
+                        imgWrapper.style.transform = `translateX(${currentTx}px) translateY(${currentTy}px) scaleX(${Math.sign(currentScaleX) * (newRenderW / originalWidth)}) scaleY(${Math.sign(currentScaleY) * (newRenderH / originalHeight)})`;
+                    }
+                };
+                const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+            };
+        });
+    }
+
+    // === 翻转图片 (修复版：原地中心翻转) ===
+    window.flipImage = function(btn, e) {
+        e.stopPropagation(); 
+        saveState();
+        const imgWrapper = btn.closest('.img-wrapper-inner');
+        const currentTransform = window.getComputedStyle(imgWrapper).transform;
+        const matrix = new DOMMatrix(currentTransform);
+
+        let scaleX = matrix.a; 
+        let scaleY = matrix.d;
+        let translateX = matrix.e;
+        let translateY = matrix.f;
+        
+        // 计算当前视觉宽度
+        const currentWidth = imgWrapper.offsetWidth; // 因为scale被应用了，offsetWidth是布局宽度，但transform scale会改变绘制
+
+        // 逻辑：如果 scaleX 从 1 变 -1。原本绘制在 [x, x+w]。现在绘制在 [x, x-w]。
+        // 为了视觉上原地翻转 (中心不动)，我们需要把 x 移动。
+        // 原中心 = x + (w/2)。
+        // 新中心 = newX - (w/2) (如果scale是负的，坐标系反转) -> 不，CSS transform origin 0 0.
+        // 简单数学：
+        // 状态1 (Scale > 0): 左边在 Tx. 右边在 Tx + W. 中心 Tx + W/2.
+        // 状态2 (Scale < 0): 左边在 Tx. 右边在 Tx - W. 中心 Tx - W/2.
+        
+        // 如果我们翻转 Scale (例如 1 -> -1)，中心从 Tx+W/2 变成了 Tx-W/2。
+        // 为了保持中心不变，我们需要把 Tx 增加 W。
+        
+        // 如果 Scale (例如 -1 -> 1)，中心从 Tx-W/2 变成了 Tx+W/2。
+        // 为了保持中心不变，我们需要把 Tx 减去 W。
+        
+        if (scaleX > 0) {
+            // 即将变负，需要向右移
+            translateX += currentWidth;
+        } else {
+            // 即将变正，需要向左移
+            translateX -= currentWidth;
+        }
+
+        scaleX *= -1; 
+        imgWrapper.style.transform = `translateX(${translateX}px) translateY(${translateY}px) scaleX(${scaleX}) scaleY(${scaleY})`;
+    }
+
+
+    function setActiveRow(row, e) { 
+        if(e) e.stopPropagation(); 
+        document.querySelectorAll('.row').forEach(r => r.classList.remove('active-row')); 
+        row.classList.add('active-row'); 
+        currentActiveRow = row; 
+    }
+    
+    function handleLibraryClick(src) {
+        if(!currentActiveRow) { 
+            addRow({ roleId: 0, text: '' }); 
+            setTimeout(() => { if (currentActiveRow) insertImageIntoRow(src, currentActiveRow); }, 0); 
+        } else {
+            insertImageIntoRow(src, currentActiveRow);
+        }
+    }
+
+    function insertImageIntoRow(src, row) {
+        saveState();
+        const d = document.createElement('div'); d.className = 'img-wrapper-inner';
+        d.style.width='30%'; 
+        d.style.top='50%'; 
+        d.style.left='50%'; 
+        d.style.transform='translate(-50%,-50%) scaleX(1) scaleY(1)'; 
+        d.innerHTML = `<img src="${src}" class="img-layer"><div class="resize-handle rh-se"></div><div class="resize-handle rh-sw"></div><div class="resize-handle rh-ne"></div><div class="resize-handle rh-nw"></div><div class="flip-btn" onclick="flipImage(this, event)">⇄</div>`;
+        row.appendChild(d); makeDraggableAndResizable(d);
+        document.querySelectorAll('.editing').forEach(el=>el.classList.remove('editing'));
+        d.classList.add('editing');
+    }
+    
+    // 只清空画布
+    window.clearCanvasOnly = function() { saveState(); document.getElementById('canvas').innerHTML = ''; }
+    
+    window.addTextToRow = function(btn) {
+        saveState(); const row = btn.closest('.row');
+        const d = document.createElement('div'); d.className = 'text-box-container active';
+        d.style.fontFamily = GLOBAL_DEFAULT_FONT; 
+        d.style.top='50%'; d.style.left='50%'; d.style.transform='translate(-50%,-50%)'; 
+        d.innerHTML = `<div class="text-del-btn">×</div><div class="text-scale-handle"></div>${createLineHtml("双击编辑文字", 50)}`;
+        row.appendChild(d); bindContainerEvents(d); bindLineEvents(d.querySelector('.text-line')); currentTextContainer = d;
+    }
+    
+    // === V45 修复版保存逻辑：克隆+离屏渲染 (仅修改此处) ===
+    window.saveLongImage = function() {
+        const btn = document.querySelector('button[onclick="saveLongImage()"]');
+        const originalText = btn.innerText;
+        btn.innerText = "处理中...";
+
+        // 1. 获取源节点
+        const sourceCanvas = document.getElementById('canvas');
+        if (!sourceCanvas || sourceCanvas.children.length === 0) {
+            alert("画布为空");
+            btn.innerText = originalText;
+            return;
+        }
+
+        // 2. 克隆节点 (关键步骤，为了完整展开内容且不受滚动条影响)
+        const clone = sourceCanvas.cloneNode(true);
+
+        // 3. 设置克隆节点样式：移出屏幕，固定宽度，高度自适应
+        clone.style.position = 'absolute';
+        clone.style.top = '0';
+        clone.style.left = '-9999px';
+        clone.style.width = '800px'; 
+        clone.style.height = 'auto'; // 让内容撑开高度
+        clone.style.overflow = 'visible';
+        clone.style.zIndex = '-1';
+        clone.style.background = 'white'; 
+        clone.style.boxShadow = 'none';
+
+        // 4. 清理克隆节点中的 UI 工具 (删除按钮、调整手柄、虚线框等)
+        const selectorsToRemove = [
+            '.tools', 
+            '.crop-panel', 
+            '.resize-handle', 
+            '.flip-btn', 
+            '.text-del-btn', 
+            '.text-scale-handle'
+        ];
+        selectorsToRemove.forEach(sel => clone.querySelectorAll(sel).forEach(el => el.remove()));
+        
+        // 移除交互状态类名
+        clone.querySelectorAll('.active-row').forEach(el => el.classList.remove('active-row'));
+        clone.querySelectorAll('.editing').forEach(el => el.classList.remove('editing'));
+        clone.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
+        clone.querySelectorAll('.show-crop').forEach(el => el.classList.remove('show-crop'));
+        
+        // 去除边框
+        clone.querySelectorAll('.row').forEach(el => el.style.borderBottom = 'none');
+        clone.querySelectorAll('.text-box-container').forEach(el => el.style.border = 'none');
+
+        // 插入到 body 以便渲染
+        document.body.appendChild(clone);
+
+        // 5. 使用 html2canvas 渲染
+        html2canvas(clone, { 
+            scale: 2, // 高清
+            useCORS: true, 
+            windowWidth: 1920,
+            width: 800,
+            height: clone.scrollHeight, // 确保截取完整高度
+            scrollY: 0,
+            scrollX: 0,
+            backgroundColor: "#ffffff"
+        }).then(c => {
+            const a = document.createElement('a'); 
+            a.download = `简笔笑画_${Date.now()}.jpg`; 
+            a.href = c.toDataURL('image/jpeg', 0.9); 
+            a.click();
+            
+            // 清理
+            document.body.removeChild(clone);
+            btn.innerText = originalText;
+        }).catch(error => {
+            console.error("保存图片失败:", error);
+            alert("保存失败，可能有跨域图片或内存不足。");
+            document.body.removeChild(clone);
+            btn.innerText = originalText;
+        });
+    }
+    
+    window.updateGlobalFont = () => { 
+        GLOBAL_DEFAULT_FONT = document.getElementById('fontSelect').value;
+        if(currentTextContainer) currentTextContainer.style.fontFamily = GLOBAL_DEFAULT_FONT; 
+        localStorage.setItem(FONT_STORAGE_KEY, GLOBAL_DEFAULT_FONT);
+    }
+    window.updateLineHeight = (v) => { if(currentTextContainer) currentTextContainer.style.lineHeight = v; }
+    window.applyColor = (v) => { if(currentTextContainer) currentTextContainer.style.color = v; }
+    window.applyBackground = () => { 
+        if(!currentTextContainer) return;
+        const hex = document.getElementById('bgColor').value; const a = document.getElementById('bgOpacity').value;
+        const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+        currentTextContainer.style.backgroundColor = `rgba(${r},${g},${b},${a})`;
+    }
+    window.applyBold = () => { if(currentTextContainer) currentTextContainer.style.fontWeight = currentTextContainer.style.fontWeight==='bold'?'normal':'bold'; }
+    
+    document.addEventListener('mousedown', e => {
+        if(!e.target.closest('.img-wrapper-inner') && !e.target.closest('.tool-btn')) {
+            document.querySelectorAll('.editing').forEach(el=>el.classList.remove('editing'));
+        }
+        if(!e.target.closest('.text-box-container') && !e.target.closest('.control-row')) {
+            if(currentTextContainer) currentTextContainer.classList.remove('active'); currentTextContainer = null;
+        }
+    });
+    
+    initDB();
+</script>
+</body>
+</html>
