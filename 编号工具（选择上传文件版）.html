@@ -1,0 +1,461 @@
+﻿<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>编号</title>
+
+<style>
+body{
+    font-family: Arial;
+}
+
+.topbar{
+    padding:10px;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:center;
+}
+
+button{
+    padding:6px 12px;
+    cursor:pointer;
+}
+
+.main{
+    display:flex;
+    gap:20px;
+    padding:10px;
+}
+
+.left,
+.right{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, 100px);
+    grid-auto-rows: 120px;
+    gap:4px;
+}
+
+.left{
+    width:45%;
+    height:70vh;
+    border:1px solid #ccc;
+    padding:10px;
+    overflow-y:auto;
+}
+
+.right{
+    width:55%;
+    height:70vh;
+    border:1px solid #ccc;
+    padding:10px;
+    overflow-y:auto;
+}
+
+.slotBox,
+.rightSlot{
+    width:100%;
+    height:100%;
+    border:1px solid #ddd;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+    overflow:hidden;
+    cursor:pointer;
+    background:#f5f5f5;
+    position:relative;
+}
+
+.slotBox.empty{
+    background:#f5f5f5;
+}
+
+.rightSlot.filled{
+    border:2px solid #4caf50;
+    background:#eaffea;
+}
+
+/* 图片预览 */
+img{
+    width:100%;
+    height:80px;
+    object-fit:contain;
+}
+
+/* 非图片文件预览 */
+.file-preview{
+    width:100%;
+    height:80px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#e0e0e0;
+    font-size:20px;
+    font-weight:bold;
+    color:#555;
+}
+
+.name{
+    font-size:10px;
+    text-align:center;
+    width:100%;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    padding-top:2px;
+}
+
+/* 半透明编号标记 */
+.number-badge{
+    position:absolute;
+    top:2px;
+    left:4px;
+    font-size:18px;
+    font-weight:bold;
+    color:rgba(0,0,0,0.35);
+    background:transparent;
+    pointer-events:none;
+    z-index:10;
+}
+
+.stats{
+    font-size:12px;
+    color:#666;
+    margin-left:10px;
+}
+
+.download-btn{
+    background:#4caf50;
+    color:white;
+    border:none;
+}
+.download-btn:hover{
+    background:#45a049;
+}
+
+.download-toast{
+    font-size:12px;
+    color:#4caf50;
+    margin-left:10px;
+    animation: fadeOut 2s ease forwards;
+}
+
+@keyframes fadeOut{
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; visibility: hidden; }
+}
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+
+<body>
+
+<div class="topbar">
+    <button onclick="batchUpload()">📁 批量上传文件</button>
+    <button class="download-btn" onclick="downloadZip()">📦 下载压缩包（仅右侧已编号文件）</button>
+    <span class="stats" id="stats"></span>
+</div>
+
+<div class="main">
+    <div class="left" id="left"></div>
+    <div class="right" id="right"></div>
+</div>
+
+<script>
+
+let leftSlots = Array(30).fill(null);
+let rightSlots = Array(34).fill(null);
+let nextId = 1;
+let fileStorage = new Map();
+
+// 判断是否为图片
+function isImageFile(fileName){
+    const imageExt = ['.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg'];
+    const lower = fileName.toLowerCase();
+    return imageExt.some(ext => lower.endsWith(ext));
+}
+
+// 获取文件扩展名
+function getFileExt(fileName){
+    const dotIndex = fileName.lastIndexOf('.');
+    if(dotIndex === -1) return '?';
+    return fileName.substring(dotIndex + 1).toUpperCase();
+}
+
+// 提取文件名开头的数字编号（如 "12猫咪.jpg" → 12）
+function extractNumberPrefix(fileName){
+    const match = fileName.match(/^(\d+)/);
+    if(match){
+        return parseInt(match[1], 10);
+    }
+    return null;
+}
+
+// 去掉文件名开头的数字编号（如 "12猫咪.jpg" → "猫咪.jpg"）
+function removeNumberPrefix(fileName){
+    const match = fileName.match(/^(\d+)(.*)$/);
+    if(match){
+        return match[2]; // 返回剩余部分
+    }
+    return fileName;
+}
+
+// 更新统计
+function updateStats(){
+    const leftCount = leftSlots.filter(x => x !== null).length;
+    const rightCount = rightSlots.filter(x => x !== null).length;
+    document.getElementById("stats").innerHTML = `📦 待整理 ${leftCount}/30 &nbsp;|&nbsp; ✅ 已编号 ${rightCount}/34`;
+}
+
+// 显示提示
+function showDownloadToast(message, isError = false){
+    const statsSpan = document.getElementById("stats");
+    const oldToast = document.querySelector('.download-toast');
+    if(oldToast) oldToast.remove();
+    
+    const toast = document.createElement('span');
+    toast.className = 'download-toast';
+    toast.style.color = isError ? '#f44336' : '#4caf50';
+    toast.innerText = message;
+    statsSpan.parentNode.insertBefore(toast, statsSpan.nextSibling);
+    
+    setTimeout(() => {
+        if(toast && toast.parentNode) toast.remove();
+    }, 2000);
+}
+
+// ==================== 批量上传（自动识别编号并排序） ====================
+function batchUpload(){
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    
+    input.onchange = (e) => {
+        const files = Array.from(e.target.files);
+        if(files.length === 0) return;
+        
+        // 清空数据
+        leftSlots = [];
+        rightSlots = Array(34).fill(null);
+        fileStorage.clear();
+        nextId = 1;
+        
+        // 第一步：解析每个文件，提取编号和去掉编号后的名字
+        const parsedFiles = [];
+        for (const file of files) {
+            const originalName = file.name;
+            const number = extractNumberPrefix(originalName);
+            const cleanName = removeNumberPrefix(originalName);
+            
+            parsedFiles.push({
+                file: file,
+                originalName: originalName,
+                cleanName: cleanName,
+                number: number
+            });
+        }
+        
+        // 第二步：排序 - 有编号的按编号排前面，无编号的按原顺序排后面
+        const withNumber = parsedFiles.filter(f => f.number !== null);
+        const withoutNumber = parsedFiles.filter(f => f.number === null);
+        
+        // 有编号的按数字大小排序
+        withNumber.sort((a, b) => a.number - b.number);
+        
+        // 合并：有编号的在前，无编号的在后
+        const sortedFiles = [...withNumber, ...withoutNumber];
+        
+        // 第三步：创建左侧坑位
+        for (const item of sortedFiles) {
+            const id = nextId++;
+            const finalCurrentName = item.cleanName; // 去掉编号后的名字
+            
+            fileStorage.set(id, {
+                file: item.file,
+                originalName: finalCurrentName,
+                originalNumber: item.number  // 保存原始编号，用于显示半透明标记
+            });
+            
+            leftSlots.push({
+                id: id,
+                originalName: finalCurrentName,
+                currentName: finalCurrentName,
+                url: isImageFile(finalCurrentName) ? URL.createObjectURL(item.file) : null,
+                isImage: isImageFile(finalCurrentName),
+                originalNumber: item.number  // 保存编号用于显示
+            });
+        }
+        
+        // 补满30个空位
+        while(leftSlots.length < 30){
+            leftSlots.push(null);
+        }
+        
+        render();
+        updateStats();
+    };
+    
+    input.click();
+}
+
+// 获取右侧空位
+function getFreeSlot(){
+    return rightSlots.findIndex(s => s === null);
+}
+
+// 下载压缩包
+async function downloadZip(){
+    const rightFiles = rightSlots.filter(item => item !== null);
+    
+    if(rightFiles.length === 0){
+        showDownloadToast('⚠️ 右侧没有文件', true);
+        return;
+    }
+    
+    const zip = new JSZip();
+    
+    for (const item of rightFiles) {
+        const fileData = fileStorage.get(item.id);
+        if(fileData && fileData.file){
+            zip.file(item.currentName, fileData.file);
+        }
+    }
+    
+    const content = await zip.generateAsync({ type: "blob" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(content);
+    link.download = "编号素材.zip";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    
+    showDownloadToast('✅ 已下载压缩包');
+}
+
+// ==================== 渲染 ====================
+function render(){
+    const left = document.getElementById("left");
+    const right = document.getElementById("right");
+    
+    left.innerHTML = "";
+    right.innerHTML = "";
+    
+    // 渲染左侧
+    leftSlots.forEach((item, i) => {
+        const div = document.createElement("div");
+        div.className = "slotBox";
+        div.style.position = "relative";
+        
+        if(!item){
+            div.classList.add("empty");
+        } else {
+            let previewElem;
+            
+            if(item.isImage && item.url){
+                const img = document.createElement("img");
+                img.src = item.url;
+                previewElem = img;
+            } else {
+                const extDiv = document.createElement("div");
+                extDiv.className = "file-preview";
+                extDiv.innerText = getFileExt(item.currentName);
+                previewElem = extDiv;
+            }
+            
+            // 点击预览区 = 移到右侧并重新编号
+            previewElem.onclick = async () => {
+                const slotIndex = getFreeSlot();
+                if(slotIndex === -1){
+                    showDownloadToast('⚠️ 右侧已满（34个坑位）', true);
+                    return;
+                }
+                
+                const id = slotIndex + 1;
+                const newName = id + item.currentName;
+                
+                item.currentName = newName;
+                
+                rightSlots[slotIndex] = item;
+                leftSlots[i] = null;
+                
+                render();
+                updateStats();
+            };
+            
+            const nameDiv = document.createElement("div");
+            nameDiv.className = "name";
+            nameDiv.innerText = item.currentName;
+            
+            div.appendChild(previewElem);
+            div.appendChild(nameDiv);
+            
+            // 如果有原始编号，添加半透明数字标记
+            if(item.originalNumber !== null && item.originalNumber !== undefined){
+                const badge = document.createElement("div");
+                badge.className = "number-badge";
+                badge.innerText = item.originalNumber;
+                div.appendChild(badge);
+            }
+        }
+        
+        left.appendChild(div);
+    });
+    
+    // 渲染右侧
+    rightSlots.forEach((item, i) => {
+        const div = document.createElement("div");
+        div.className = "rightSlot";
+        div.style.position = "relative";
+        
+        if(item){
+            div.classList.add("filled");
+            
+            let previewElem;
+            
+            if(item.isImage && item.url){
+                const img = document.createElement("img");
+                img.src = item.url;
+                previewElem = img;
+            } else {
+                const extDiv = document.createElement("div");
+                extDiv.className = "file-preview";
+                extDiv.innerText = getFileExt(item.currentName);
+                previewElem = extDiv;
+            }
+            
+            // 点击右侧 = 移回左侧，恢复原名（去掉新加的编号）
+            previewElem.onclick = async () => {
+                // 恢复到原始名字（去掉编号后的名字）
+                item.currentName = item.originalName;
+                
+                rightSlots[i] = null;
+                
+                const emptyIndex = leftSlots.findIndex(x => x === null);
+                if(emptyIndex !== -1){
+                    leftSlots[emptyIndex] = item;
+                }
+                
+                render();
+                updateStats();
+            };
+            
+            const nameDiv = document.createElement("div");
+            nameDiv.className = "name";
+            nameDiv.innerText = item.currentName;
+            
+            div.appendChild(previewElem);
+            div.appendChild(nameDiv);
+        }
+        
+        right.appendChild(div);
+    });
+}
+
+updateStats();
+
+</script>
+
+</body>
+</html>

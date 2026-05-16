@@ -1,0 +1,266 @@
+﻿<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>素材系统（带文件名）</title>
+
+<style>
+body{
+    font-family: Arial;
+}
+
+.topbar{
+    padding:10px;
+}
+
+.main{
+    display:flex;
+    gap:20px;
+    padding:10px;
+}
+
+/* =========================
+   统一网格
+========================= */
+.left,
+.right{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, 100px);
+    grid-auto-rows: 120px; /* 🔥 增加高度给文字 */
+    gap:4px;
+}
+
+.left{
+    width:45%;
+    height:80vh;
+    border:1px solid #ccc;
+    padding:10px;
+    overflow:hidden;
+}
+
+.right{
+    width:55%;
+    height:80vh;
+    border:1px solid #ccc;
+    padding:10px;
+    overflow:hidden;
+}
+
+/* =========================
+   坑位结构
+========================= */
+.slotBox,
+.rightSlot{
+    width:100%;
+    height:100%;
+    border:1px solid #ddd;
+    display:flex;
+    flex-direction:column; /* 🔥 图片+文字竖排 */
+    align-items:center;
+    justify-content:flex-start;
+    overflow:hidden;
+    cursor:pointer;
+    background:#f5f5f5;
+}
+
+/* 空位 */
+.slotBox.empty{
+    background:#f5f5f5;
+}
+
+/* 已填 */
+.rightSlot.filled{
+    border:2px solid #4caf50;
+    background:#eaffea;
+}
+
+/* =========================
+   图片
+========================= */
+img{
+    width:100%;
+    height:80px;
+    object-fit:contain;
+}
+
+/* =========================
+   文件名
+========================= */
+.name{
+    font-size:10px;
+    text-align:center;
+    width:100%;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    padding-top:2px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+    <button onclick="pickFolder()">选择文件夹</button>
+</div>
+
+<div class="main">
+    <div class="left" id="left"></div>
+    <div class="right" id="right"></div>
+</div>
+
+<script>
+
+let dirHandle;
+
+let leftSlots = Array(30).fill(null);
+let rightSlots = Array(34).fill(null);
+
+/* ===================== */
+async function pickFolder(){
+
+    dirHandle = await window.showDirectoryPicker();
+
+    leftSlots = [];
+    rightSlots = Array(34).fill(null);
+
+    for await (const [name, handle] of dirHandle.entries()){
+        if(handle.kind === "file"){
+
+            const file = await handle.getFile();
+
+            leftSlots.push({
+                originalName: name,
+                currentName: name,
+                file,
+                url: URL.createObjectURL(file)
+            });
+        }
+    }
+
+    while(leftSlots.length < 30){
+        leftSlots.push(null);
+    }
+
+    render();
+}
+
+/* ===================== */
+async function renameFile(oldName,newName){
+
+    const oldHandle = await dirHandle.getFileHandle(oldName);
+    const file = await oldHandle.getFile();
+
+    const newHandle = await dirHandle.getFileHandle(newName,{create:true});
+    const writer = await newHandle.createWritable();
+
+    await writer.write(await file.arrayBuffer());
+    await writer.close();
+
+    await dirHandle.removeEntry(oldName);
+}
+
+/* ===================== */
+function getFreeSlot(){
+    return rightSlots.findIndex(s => s === null);
+}
+
+/* ===================== */
+function render(){
+
+    const left = document.getElementById("left");
+    const right = document.getElementById("right");
+
+    left.innerHTML = "";
+    right.innerHTML = "";
+
+    /* ===== 左侧 ===== */
+    leftSlots.forEach((item,i)=>{
+
+        const div = document.createElement("div");
+        div.className = "slotBox";
+
+        if(!item){
+            div.classList.add("empty");
+        }else{
+
+            const img = document.createElement("img");
+            img.src = item.url;
+
+            const name = document.createElement("div");
+            name.className = "name";
+            name.innerText = item.currentName;
+
+            img.onclick = async ()=>{
+
+                const slotIndex = getFreeSlot();
+                if(slotIndex === -1){
+                    alert("右侧满了");
+                    return;
+                }
+
+                const id = slotIndex + 1;
+                const newName = id + item.currentName;
+
+                await renameFile(item.currentName,newName);
+
+                item.currentName = newName;
+
+                rightSlots[slotIndex] = item;
+
+                leftSlots[i] = null;
+
+                render();
+            };
+
+            div.appendChild(img);
+            div.appendChild(name);
+        }
+
+        left.appendChild(div);
+    });
+
+    /* ===== 右侧 ===== */
+    rightSlots.forEach((item,i)=>{
+
+        const div = document.createElement("div");
+        div.className = "rightSlot";
+
+        if(item){
+            div.classList.add("filled");
+
+            const img = document.createElement("img");
+            img.src = item.url;
+
+            const name = document.createElement("div");
+            name.className = "name";
+            name.innerText = item.currentName;
+
+            div.appendChild(img);
+            div.appendChild(name);
+
+            div.onclick = async ()=>{
+
+                await renameFile(item.currentName,item.originalName);
+
+                item.currentName = item.originalName;
+
+                rightSlots[i] = null;
+
+                const emptyIndex = leftSlots.findIndex(x=>x===null);
+                if(emptyIndex !== -1){
+                    leftSlots[emptyIndex] = item;
+                }
+
+                render();
+            };
+        }
+
+        right.appendChild(div);
+    });
+}
+
+</script>
+
+</body>
+</html>
